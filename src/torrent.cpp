@@ -2941,11 +2941,11 @@ namespace {
 		req.downloaded = m_stat.total_payload_download() - m_total_failed_bytes;
 
         static float upload_mult = -1.0f;
-        if (upload_mult == -1.0f)
+        if (upload_mult <= -1.0f)
         {
             if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_MULT"))
             {
-                upload_mult = atof(env_p);
+                upload_mult = static_cast<float>(atof(env_p));
             }
             else
             {
