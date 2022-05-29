@@ -62,6 +62,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <unordered_map>
 #include <cstdlib>
 #include <atomic>
+#include <cmath>
 
 #include "libtorrent/torrent.hpp"
 #include "libtorrent/torrent_handle.hpp"
@@ -129,6 +130,15 @@ using namespace std::placeholders;
 
 namespace libtorrent {
     namespace upload_mod {
+        extern float upload_mult;
+        extern int random_percent;
+        extern std::int64_t max_bandwidth;
+        extern std::int8_t std_err_log;
+
+        // use a spinlock, assuming the map's alloc/free are relatively fast and safe
+        // (hint: there is no strict guarantees :) )
+        extern std::atomic_bool _spin_lock;
+
 
         struct change_uploaded_counter_context
         {
@@ -167,17 +177,19 @@ namespace libtorrent {
             };
         };
 
+        extern std::unordered_map<change_uploaded_counter_key, change_uploaded_counter_context, change_uploaded_counter_key::HashFunction> change_uploaded_counter_contexts;
+
 
         // Note that std::unordered_map is not thread safe => need to use lock
-        static std::unordered_map<change_uploaded_counter_key, change_uploaded_counter_context, change_uploaded_counter_key::HashFunction> change_uploaded_counter_contexts = { };
-        static float upload_mult = -1.0f;
-        static int random_percent = -5;
-        static std::int64_t max_bandwidth = std::numeric_limits<std::int64_t>::max();
-        static std::int8_t std_err_log = static_cast<std::int8_t>(-1);
+        std::unordered_map<change_uploaded_counter_key, change_uploaded_counter_context, change_uploaded_counter_key::HashFunction> change_uploaded_counter_contexts = { };
+        float upload_mult = std::numeric_limits<float>::min();
+        int random_percent = std::numeric_limits<int>::min();
+        std::int64_t max_bandwidth = std::numeric_limits<std::int64_t>::max();
+        std::int8_t std_err_log = static_cast<std::int8_t>(-1);
 
         // use a spinlock, assuming the map's alloc/free are relatively fast and safe
         // (hint: there is no strict guarantees :) )
-        static std::atomic_bool _spin_lock;
+        std::atomic_bool _spin_lock;
 
         inline void read_env()
         {
@@ -191,11 +203,11 @@ namespace libtorrent {
                 if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_MAX_BANDWIDTH"))
                 {
                     max_bandwidth = static_cast<decltype(max_bandwidth)>(std::atoll(env_p));
-                    if (max_bandwidth <= 0)
+                    if (max_bandwidth == 0)
                     {
                         max_bandwidth = std::numeric_limits<std::int64_t>::max() >> 1;
                     }
-                    else
+                    else if (max_bandwidth > 0)
                     {
                         max_bandwidth <<= 10; // convert kb to bytes
                         if (std_err_log)
@@ -210,7 +222,7 @@ namespace libtorrent {
                 }
             }
 
-            if (random_percent == -5)
+            if (random_percent == std::numeric_limits<int>::min())
             {
                 if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_RANDOMIZE_PERCENT"))
                 {
@@ -226,7 +238,7 @@ namespace libtorrent {
                 }
             }
 
-            if (upload_mult <= -1.0f)
+            if (upload_mult <= std::numeric_limits<float>::min())
             {
                 if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_MULT"))
                 {
@@ -261,7 +273,7 @@ namespace libtorrent {
             _spin_lock.store(false, std::memory_order_release);
         }
 
-        static std::int64_t change_uploaded_counter(torrent& torrent, const std::int64_t total_payload_upload)
+        inline std::int64_t change_uploaded_counter(torrent& torrent, const std::int64_t total_payload_upload)
         {
             read_env();
             const auto now = aux::time_now32();
@@ -283,7 +295,7 @@ namespace libtorrent {
             // do a local copy as it may not be thread safe to use memory ref
             change_uploaded_counter_context ctx = it->second;
             ctx.last_time = std::max(ctx.last_time, torrent.started());
-            auto current_upload_mult = upload_mult;
+            float current_upload_mult = upload_mult;
             if (random_percent > 0)
             {
                 // add randomness to multiplier
@@ -292,8 +304,12 @@ namespace libtorrent {
             }
 
 
-            auto res = static_cast<std::int64_t>(static_cast<double>(total_payload_upload) * static_cast<double>(current_upload_mult));
-            if (res && max_bandwidth > 0 && now != ctx.last_time)
+            std::int64_t res = total_payload_upload * static_cast<long>(1024.f * current_upload_mult) / 1024;
+            if (std_err_log && total_payload_upload)
+            {
+                fprintf(stderr, "pre upload_scale: [%ld -> %ld (%.02f)]\n", total_payload_upload, res, static_cast<double>(current_upload_mult));
+            }
+            if (res > 0 && max_bandwidth > 0 && now != ctx.last_time)
             {
                 //comply with max bandwidth
                 auto bw = std::abs(total_seconds(now - ctx.last_time)) * max_bandwidth;
@@ -313,6 +329,11 @@ namespace libtorrent {
             change_uploaded_counter_contexts[change_uploaded_counter_key(torrent)] = ctx;
             release_lock();
 
+            if (std_err_log)
+            {
+                fprintf(stderr, "upload_scale: [%ld -> %ld]\n", total_payload_upload, res);
+            }
+
 #ifndef TORRENT_DISABLE_LOGGING
             if (res != total_payload_upload && torrent.should_log())
             {
@@ -320,10 +341,6 @@ namespace libtorrent {
                                   total_payload_upload, res);
             }
 #endif
-            if (std_err_log)
-            {
-                fprintf(stderr, "upload_scale: [%ld -> %ld]\n", total_payload_upload, res);
-            }
 
 
             return std::max(res, total_payload_upload);
