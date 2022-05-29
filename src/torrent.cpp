@@ -62,7 +62,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <limits> // for numeric_limits
 #include <cstdio> // for snprintf
 #include <functional>
-#include <map>
+#include <unordered_map>
 #include <cstdlib>
 #include <atomic>
 
@@ -116,6 +116,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/announce_entry.hpp"
 #include "libtorrent/ssl.hpp"
 #include "libtorrent/aux_/apply_pad_files.hpp"
+#include "libtorrent/info_hash.hpp" // for std::hash<libtorrent::info_hash_t>
 
 #ifdef TORRENT_SSL_PEERS
 #include "libtorrent/ssl_stream.hpp"
@@ -139,8 +140,39 @@ namespace libtorrent {
             std::int64_t prev_total_payload_upload;
         };
 
-        // Note that std::map is not thread safe => need to use lock
-        static std::map<info_hash_t, change_uploaded_counter_context> change_uploaded_counter_contexts;
+        struct change_uploaded_counter_key
+        {
+            std::uintptr_t torrent_ptr;
+            std::string name;
+            info_hash_t info_hash;
+
+            change_uploaded_counter_key() = default;
+
+            change_uploaded_counter_key(torrent& torrent): torrent_ptr(reinterpret_cast<std::uintptr_t>(std::addressof(torrent))), name(torrent.name()), info_hash(torrent.info_hash())
+            {
+            }
+
+            inline bool operator==(const change_uploaded_counter_key & other) const
+            {
+                if (torrent_ptr == other.torrent_ptr && name == other.name)
+                {
+                    return true;
+                }
+                return info_hash == other.info_hash;
+            }
+
+            struct HashFunction
+            {
+                std::size_t operator()(change_uploaded_counter_key const& k) const
+                {
+                    return std::hash<libtorrent::info_hash_t>{}(k.info_hash);
+                }
+            };
+        };
+
+
+        // Note that std::unordered_map is not thread safe => need to use lock
+        static std::unordered_map<change_uploaded_counter_key, change_uploaded_counter_context, change_uploaded_counter_key::HashFunction> change_uploaded_counter_contexts = { };
         static float upload_mult = -1.0f;
         static int random_percent = -5;
         static std::int64_t max_bandwidth = std::numeric_limits<std::int64_t>::max();
@@ -237,7 +269,7 @@ namespace libtorrent {
             read_env();
             const auto now = aux::time_now32();
             aquire_lock();
-            auto it = change_uploaded_counter_contexts.find(torrent.info_hash());
+            auto it = change_uploaded_counter_contexts.find(change_uploaded_counter_key(torrent));
 
             if (it == change_uploaded_counter_contexts.end())
             {
@@ -247,7 +279,7 @@ namespace libtorrent {
                 {
                     ctx.last_time = now;
                 }
-                it = change_uploaded_counter_contexts.emplace(torrent.info_hash(), ctx).first;
+                it = change_uploaded_counter_contexts.emplace(change_uploaded_counter_key(torrent), ctx).first;
             }
             release_lock();
 
@@ -272,13 +304,16 @@ namespace libtorrent {
                 {
                     bw += (rand() % random_percent) * bw / 100;
                 }
-                res = std::min(res, bw);
+                if (bw > 0)
+                {
+                    res = std::min(res, bw);
+                }
             }
 
             ctx.last_time = aux::time_now32();
             ctx.prev_total_payload_upload = total_payload_upload;
             aquire_lock();
-            change_uploaded_counter_contexts[torrent.info_hash()] = ctx;
+            change_uploaded_counter_contexts[change_uploaded_counter_key(torrent)] = ctx;
             release_lock();
 
 #ifndef TORRENT_DISABLE_LOGGING
@@ -295,6 +330,20 @@ namespace libtorrent {
 
 
             return std::max(res, total_payload_upload);
+        }
+
+        inline bool cleanup(torrent& torrent)
+        {
+            bool res = false;
+            aquire_lock();
+            auto it = change_uploaded_counter_contexts.find(change_uploaded_counter_key(torrent));
+            if (it != change_uploaded_counter_contexts.end())
+            {
+                res = true;
+                change_uploaded_counter_contexts.erase(it);
+            }
+            release_lock();
+            return res;
         }
     }
 namespace {
@@ -857,15 +906,7 @@ bool is_downloading_state(int const st)
 
 	torrent::~torrent()
 	{
-        {
-            upload_mod::aquire_lock();
-            auto it = upload_mod::change_uploaded_counter_contexts.find(info_hash());
-            if (it != upload_mod::change_uploaded_counter_contexts.end())
-            {
-                upload_mod::change_uploaded_counter_contexts.erase(it);
-            }
-            upload_mod::release_lock();
-        }
+        upload_mod::cleanup(std::ref(*this));
 
 		// TODO: 3 assert there are no outstanding async operations on this
 		// torrent
@@ -3118,7 +3159,7 @@ namespace {
 		req.pid = m_peer_id;
 		req.downloaded = m_stat.total_payload_download() - m_total_failed_bytes;
 
-		req.uploaded = upload_mod::change_uploaded_counter(*this, m_stat.total_payload_upload());
+		req.uploaded = upload_mod::change_uploaded_counter(std::ref(*this), m_stat.total_payload_upload());
 		req.corrupt = m_total_failed_bytes;
 		req.left = value_or(bytes_left(), 16*1024);
 #ifdef TORRENT_SSL_PEERS
