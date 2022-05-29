@@ -203,7 +203,7 @@ static std::int64_t change_uploaded_counter(torrent& torrent, std::int64_t total
     {
         change_uploaded_counter_context ctx;
         ctx.last_time = torrent.started();
-        if (ctx.last_time == 0)
+        if (ctx.last_time == decltype(ctx.last_time){ .0 })
         {
             ctx.last_time = now;
         }
