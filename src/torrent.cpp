@@ -60,7 +60,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cstdio> // for snprintf
 #include <functional>
 #include <stdlib.h>
-#include <cstdlib>>
+#include <cstdlib>
 
 #include "libtorrent/torrent.hpp"
 #include "libtorrent/torrent_handle.hpp"
