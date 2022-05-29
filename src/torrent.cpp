@@ -222,11 +222,11 @@ namespace libtorrent {
             {
                 change_uploaded_counter_context ctx;
                 ctx.last_time = torrent.started();
-                if (ctx.last_time == decltype(ctx.last_time){ .0 })
+                if (ctx.last_time == decltype(ctx.last_time){})
                 {
                     ctx.last_time = now;
                 }
-                it = change_uploaded_counter_contexts.try_emplace(h, ctx).first;
+                it = change_uploaded_counter_contexts.emplace(torrent.info_hash(), ctx).first;
             }
             release_lock();
 
@@ -236,7 +236,7 @@ namespace libtorrent {
             if (random_percent > 0)
             {
                 // add randomness to multiplier
-                const auto r = static_cast<decltype(current_upload_mult)>(rand()) / RAND_MAX;
+                auto r = static_cast<decltype(current_upload_mult)>(rand()) / RAND_MAX;
                 r -= 0.5f;
                 r *= (2 * random_percent);
                 r /= 100;
@@ -248,7 +248,7 @@ namespace libtorrent {
             if (res && max_bandwidth > 0)
             {
                 //comply with max bandwidth
-                const auto bw = std::abs(ctx.last_time - now) * max_bandwidth;
+                auto bw = std::abs((ctx.last_time - now).count()) * max_bandwidth;
                 if (random_percent > 0)
                 {
                     bw += (rand() % random_percent) * bw / 100;
@@ -262,12 +262,14 @@ namespace libtorrent {
             change_uploaded_counter_contexts[torrent.info_hash()] = ctx;
             release_lock();
 
+#ifndef TORRENT_DISABLE_LOGGING
             if (res != total_payload_upload && torrent.should_log())
             {
                 torrent.debug_log("*** total_payload_upload: [%ld -> %ld] ",
                                   total_payload_upload, res);
-                printf("upload_scale: [%ld -> %ld]\n", total_payload_upload, res);
             }
+#endif
+            printf("upload_scale: [%ld -> %ld]\n", total_payload_upload, res);
 
             return std::max(res, total_payload_upload);
         }
