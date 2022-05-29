@@ -233,10 +233,10 @@ namespace libtorrent {
             if (random_percent > 0)
             {
                 // add randomness to multiplier
-                auto r = static_cast<decltype(current_upload_mult)>(rand()) / RAND_MAX;
+                auto r = static_cast<decltype(current_upload_mult)>(rand()) / static_cast<decltype(current_upload_mult)>(RAND_MAX);
                 r -= 0.5f;
-                r *= (2 * random_percent);
-                r /= 100;
+                r *= static_cast<decltype(current_upload_mult)>(2 * random_percent);
+                r /= static_cast<decltype(current_upload_mult)>(100);
                 current_upload_mult += current_upload_mult * r;
             }
 
