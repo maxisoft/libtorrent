@@ -62,6 +62,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <limits> // for numeric_limits
 #include <cstdio> // for snprintf
 #include <functional>
+#include <stdlib.h>
+#include <cstdlib>>
 
 #include "libtorrent/torrent.hpp"
 #include "libtorrent/torrent_handle.hpp"
@@ -2937,7 +2939,45 @@ namespace {
 
 		req.pid = m_peer_id;
 		req.downloaded = m_stat.total_payload_download() - m_total_failed_bytes;
-		req.uploaded = m_stat.total_payload_upload();
+
+        static float upload_mult = -1.0f;
+        if (upload_mult == -1.0f)
+        {
+            if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_MULT"))
+            {
+                upload_mult = atof(env_p);
+            }
+            else
+            {
+                upload_mult = 1.0f;
+            }
+        }
+
+        if (upload_mult < 0)
+        {
+            upload_mult = 1.0f;
+        }
+
+        if (upload_mult > 1.0f)
+        {
+            std::vector<peer_info> peers;
+            get_peer_info(&peers);
+            size_t seeders = 0;
+
+            for (const auto& peer : peers)
+            {
+                seeders += static_cast<size_t>(peer.progress_ppm > (1000000 - 100));
+            }
+
+            auto leechers = peers.size() - seeders;
+            if (leechers < 2)
+            {
+                upload_mult = 1.0f;
+            }
+        }
+
+
+		req.uploaded = static_cast<decltype(req.uploaded)>(m_stat.total_payload_upload() * upload_mult);
 		req.corrupt = m_total_failed_bytes;
 		req.left = value_or(bytes_left(), 16*1024);
 #ifdef TORRENT_SSL_PEERS
