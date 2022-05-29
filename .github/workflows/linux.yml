@@ -2,7 +2,11 @@ name: Linux
 
 on:
    push:
+<<<<<<< HEAD
       branches: [ mult ]
+=======
+      branches: [ mult, dev, mult_backport, RC_1_2, RC_2_0, master ]
+>>>>>>> 14e4938af (it's a simple trick but quite unbreakable)
    pull_request:
 
 concurrency:
