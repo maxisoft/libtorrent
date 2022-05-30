@@ -152,6 +152,7 @@ set(libtorrent_include_files
 	web_peer_connection.hpp
 	write_resume_data.hpp
 	xml_parse.hpp
+	upload_mult.hpp
 )
 
 set(libtorrent_kademlia_include_files
@@ -276,7 +277,6 @@ set(libtorrent_aux_include_files
 	vector.hpp
 	win_crypto_provider.hpp
 	win_util.hpp
-	upload_mult.hpp
 		)
 
 set(try_signal_include_files

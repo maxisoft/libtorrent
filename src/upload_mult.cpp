@@ -1,9 +1,11 @@
-#include "libtorrent/aux_/upload_mult.hpp"
+#include "libtorrent/upload_mult.hpp"
 #include "libtorrent/torrent.hpp"
 
-namespace libtorrent {
+namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
 
     namespace upload_mod {
+
+
         using detail::change_uploaded_counter_key;
         using detail::change_uploaded_counter_context;
 
@@ -74,7 +76,6 @@ namespace libtorrent {
             }
 #endif
 
-
             return std::max(res, total_payload_upload);
         }
 
@@ -138,6 +139,14 @@ namespace libtorrent {
             }
             release_lock();
             return res;
+        }
+
+        namespace detail {
+            change_uploaded_counter_key::change_uploaded_counter_key(torrent &torrent) : torrent_ptr(
+                    reinterpret_cast<std::uintptr_t>(std::addressof(torrent))), name(torrent.name()),
+                                                                                         info_hash(
+                                                                                                 torrent.info_hash()) {
+            }
         }
     }
 }
