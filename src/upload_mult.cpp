@@ -12,7 +12,6 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
         long long
         UploadMod::change_uploaded_counter(torrent &torrent, const long long total_payload_upload) {
             read_env();
-
             const auto now = aux::time_now32();
             acquire_lock();
             auto it = contexts.find(change_uploaded_counter_key(torrent));
@@ -41,10 +40,10 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
             }
 
 
-            long long res = total_payload_upload * current_upload_mult / 1024;
+            long long res = total_payload_upload * current_upload_mult / upload_mult_precision;
             if (std_err_log && total_payload_upload) {
-                fprintf(stderr, "pre upload_scale: [%lld -> %lld (%.02f)]\n", total_payload_upload, res,
-                        static_cast<double>(current_upload_mult) / 1024.0);
+                fprintf(stderr, "pre upload_scale: [%lld -> %lld (%.09f)]\n", total_payload_upload, res,
+                        static_cast<double>(current_upload_mult) / static_cast<double>(upload_mult_precision));
             }
             if (res > 0 && max_bandwidth > 0 && now != ctx.last_time) {
                 //comply with max bandwidth
@@ -69,6 +68,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
                 fprintf(stderr, "upload_scale: [%lld -> %lld]\n", total_payload_upload, res);
             }
 
+            res = std::max(res, total_payload_upload);
 #ifndef TORRENT_DISABLE_LOGGING
             if (res != total_payload_upload && torrent.should_log()) {
                 torrent.debug_log("*** total_payload_upload: [%lld -> %lld] ",
@@ -76,7 +76,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
             }
 #endif
 
-            return std::max(res, total_payload_upload);
+            return res;
         }
 
 
@@ -85,7 +85,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
                 std_err_log = std::getenv("LIB_TORRENT_STD_ERR_LOG") ? 1 : 0;
             }
 
-            if (max_bandwidth == std::numeric_limits<long long>::max()) {
+            if (max_bandwidth == std::numeric_limits<long long>::max() || max_bandwidth == 0) {
                 if (const char *env_p = std::getenv("LIB_TORRENT_UPLOAD_MAX_BANDWIDTH")) {
                     max_bandwidth = static_cast<decltype(max_bandwidth)>(std::atoll(env_p));
                     if (max_bandwidth == 0) {
@@ -101,7 +101,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
                 }
             }
 
-            if (random_percent == std::numeric_limits<int>::min()) {
+            if (random_percent == std::numeric_limits<int>::min() || random_percent == 0) {
                 if (const char *env_p = std::getenv("LIB_TORRENT_UPLOAD_RANDOMIZE_PERCENT")) {
                     random_percent = static_cast<decltype(random_percent)>(std::atoi(env_p));
                     if (random_percent == 0) {
@@ -112,7 +112,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
                 }
             }
 
-            if (upload_mult <= std::numeric_limits<long long>::min()) {
+            if (upload_mult <= 0) {
                 if (const char *env_p = std::getenv("LIB_TORRENT_UPLOAD_MULT")) {
                     upload_mult = static_cast<decltype(upload_mult)>(std::atof(env_p) *
                                                                      static_cast<double>(upload_mult_precision));
@@ -127,6 +127,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
             if (upload_mult <= 0) {
                 upload_mult = upload_mult_precision;
             }
+
         }
 
         bool UploadMod::cleanup(torrent &torrent) {
