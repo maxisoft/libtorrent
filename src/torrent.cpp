@@ -114,7 +114,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/ssl.hpp"
 #include "libtorrent/aux_/apply_pad_files.hpp"
 
-#include "libtorrent/aux_/upload_mult.hpp"
+#include "libtorrent/upload_mult.hpp"
 
 #ifdef TORRENT_SSL_PEERS
 #include "libtorrent/ssl_stream.hpp"

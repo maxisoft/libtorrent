@@ -25,30 +25,30 @@
 
 
 #include "libtorrent/info_hash.hpp" // for std::hash<libtorrent::info_hash_t>
-#include "libtorrent/torrent.hpp"
+#include "libtorrent/time.hpp"
+
 
 namespace libtorrent {
+    struct torrent;
+
     namespace upload_mod {
 
         namespace detail {
-            struct change_uploaded_counter_context {
+            struct change_uploaded_counter_context { // NOLINT(cppcoreguidelines-pro-type-member-init)
                 change_uploaded_counter_context() = default;
 
                 time_point32 last_time;
                 std::int64_t prev_total_payload_upload;
             };
 
-            struct change_uploaded_counter_key {
+            struct change_uploaded_counter_key { // NOLINT(cppcoreguidelines-pro-type-member-init)
                 std::uintptr_t torrent_ptr;
                 std::string name;
                 info_hash_t info_hash;
 
                 change_uploaded_counter_key() = default;
 
-                explicit change_uploaded_counter_key(torrent &torrent) : torrent_ptr(
-                        reinterpret_cast<std::uintptr_t>(std::addressof(torrent))), name(torrent.name()),
-                                                                         info_hash(torrent.info_hash()) {
-                }
+                explicit change_uploaded_counter_key(torrent &torrent);
 
                 inline bool operator==(const change_uploaded_counter_key &other) const {
                     if (torrent_ptr == other.torrent_ptr && name == other.name) {
