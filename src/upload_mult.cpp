@@ -80,7 +80,10 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
             release_lock();
 
             if (std_err_log) {
-                fprintf(stderr, "upload_scale: [%lld -> %lld]\n", total_payload_upload, res);
+                fprintf(stderr, "upload_scale: [%s %lld -> %lld]\n",
+                        torrent.name().c_str(),
+                        total_payload_upload,
+                        res);
             }
 
             res = std::max(res, total_payload_upload);
