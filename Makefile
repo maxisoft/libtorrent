@@ -406,6 +406,7 @@ SOURCES = \
   truncate.cpp                    \
   udp_socket.cpp                  \
   udp_tracker_connection.cpp      \
+  upload_mult.cpp                 \
   upnp.cpp                        \
   ut_metadata.cpp                 \
   ut_pex.cpp                      \
@@ -559,6 +560,7 @@ HEADERS = \
   web_peer_connection.hpp      \
   write_resume_data.hpp        \
   xml_parse.hpp                \
+  upload_mult.hpp              \
   \
   aux_/alert_manager.hpp            \
   aux_/aligned_storage.hpp          \
