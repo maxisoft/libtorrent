@@ -62,10 +62,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <limits> // for numeric_limits
 #include <cstdio> // for snprintf
 #include <functional>
-#include <unordered_map>
-#include <cstdlib>
-#include <atomic>
-#include <cmath>
 
 #include "libtorrent/torrent.hpp"
 #include "libtorrent/torrent_handle.hpp"
@@ -117,7 +113,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/announce_entry.hpp"
 #include "libtorrent/ssl.hpp"
 #include "libtorrent/aux_/apply_pad_files.hpp"
-#include "libtorrent/info_hash.hpp" // for std::hash<libtorrent::info_hash_t>
+
+#include "libtorrent/aux_/upload_mult.hpp"
 
 #ifdef TORRENT_SSL_PEERS
 #include "libtorrent/ssl_stream.hpp"
@@ -132,237 +129,8 @@ POSSIBILITY OF SUCH DAMAGE.
 using namespace std::placeholders;
 
 namespace libtorrent {
-    namespace upload_mod {
-        extern std::int64_t upload_mult;
-        extern int random_percent;
-        extern std::int64_t max_bandwidth;
-        extern std::int8_t std_err_log;
+    using libtorrent::upload_mod::UploadMod;
 
-        // use a spinlock, assuming the map's alloc/free are relatively fast and safe
-        // (hint: there is no strict guarantees :) )
-        extern std::atomic_bool _spin_lock;
-
-
-        struct change_uploaded_counter_context
-        {
-            change_uploaded_counter_context() = default;
-            time_point32 last_time;
-            std::int64_t prev_total_payload_upload;
-        };
-
-        struct change_uploaded_counter_key
-        {
-            std::uintptr_t torrent_ptr;
-            std::string name;
-            info_hash_t info_hash;
-
-            change_uploaded_counter_key() = default;
-
-            change_uploaded_counter_key(torrent& torrent): torrent_ptr(reinterpret_cast<std::uintptr_t>(std::addressof(torrent))), name(torrent.name()), info_hash(torrent.info_hash())
-            {
-            }
-
-            inline bool operator==(const change_uploaded_counter_key & other) const
-            {
-                if (torrent_ptr == other.torrent_ptr && name == other.name)
-                {
-                    return true;
-                }
-                return info_hash == other.info_hash;
-            }
-
-            struct HashFunction
-            {
-                std::size_t operator()(change_uploaded_counter_key const& k) const
-                {
-                    return std::hash<libtorrent::info_hash_t>{}(k.info_hash);
-                }
-            };
-        };
-
-        extern std::unordered_map<change_uploaded_counter_key, change_uploaded_counter_context, change_uploaded_counter_key::HashFunction> change_uploaded_counter_contexts;
-
-
-        // Note that std::unordered_map is not thread safe => need to use lock
-        std::unordered_map<change_uploaded_counter_key, change_uploaded_counter_context, change_uploaded_counter_key::HashFunction> change_uploaded_counter_contexts = { };
-        std::int64_t upload_mult = std::numeric_limits<std::int64_t>::min();
-        int random_percent = std::numeric_limits<int>::min();
-        std::int64_t max_bandwidth = std::numeric_limits<std::int64_t>::max();
-        std::int8_t std_err_log = static_cast<std::int8_t>(-1);
-
-        // use a spinlock, assuming the map's alloc/free are relatively fast and safe
-        // (hint: there is no strict guarantees :) )
-        std::atomic_bool _spin_lock;
-
-        inline void read_env()
-        {
-            if (std_err_log < 0)
-            {
-                std_err_log = std::getenv("LIB_TORRENT_STD_ERR_LOG") ? 1 : 0;
-            }
-
-            if (max_bandwidth == std::numeric_limits<std::int64_t>::max())
-            {
-                if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_MAX_BANDWIDTH"))
-                {
-                    max_bandwidth = static_cast<decltype(max_bandwidth)>(std::atoll(env_p));
-                    if (max_bandwidth == 0)
-                    {
-                        max_bandwidth = std::numeric_limits<std::int64_t>::max() >> 1;
-                    }
-                    else if (max_bandwidth > 0)
-                    {
-                        max_bandwidth <<= 10; // convert kb to bytes
-                        if (std_err_log)
-                        {
-                            fprintf(stderr, "max_bandwidth: [%ld]\n", max_bandwidth);
-                        }
-                    }
-                }
-                else
-                {
-                    max_bandwidth = std::numeric_limits<std::int64_t>::max() >> 1;
-                }
-            }
-
-            if (random_percent == std::numeric_limits<int>::min())
-            {
-                if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_RANDOMIZE_PERCENT"))
-                {
-                    random_percent = static_cast<decltype(random_percent)>(std::atoi(env_p));
-                    if (random_percent == 0)
-                    {
-                        random_percent = 5;
-                    }
-                    else if (std_err_log)
-                    {
-                        fprintf(stderr, "random_percent: [%d]\n", random_percent);
-                    }
-                }
-            }
-
-            if (upload_mult <= std::numeric_limits<std::int64_t>::min())
-            {
-                if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_MULT"))
-                {
-                    upload_mult = static_cast<decltype(upload_mult)>(std::atof(env_p) * 1024.0);
-                }
-                else
-                {
-                    upload_mult = 1024;
-                }
-                if (std_err_log)
-                {
-                    fprintf(stderr, "upload_mult: [%.03f]\n", static_cast<double>(upload_mult) / 1024.0);
-                }
-            }
-
-            if (upload_mult <= 0)
-            {
-                upload_mult = 1024;
-            }
-        }
-
-        inline void aquire_lock()
-        {
-            bool expected = false;
-            while(!_spin_lock.compare_exchange_weak(expected, true, std::memory_order_acquire)) {
-                expected = false;
-            }
-        }
-
-        inline void release_lock()
-        {
-            _spin_lock.store(false, std::memory_order_release);
-        }
-
-        inline std::int64_t change_uploaded_counter(torrent& torrent, const std::int64_t total_payload_upload)
-        {
-            read_env();
-            const auto now = aux::time_now32();
-            aquire_lock();
-            auto it = change_uploaded_counter_contexts.find(change_uploaded_counter_key(torrent));
-
-            if (it == change_uploaded_counter_contexts.end())
-            {
-                change_uploaded_counter_context ctx;
-                ctx.last_time = torrent.started();
-                if (ctx.last_time == decltype(ctx.last_time){})
-                {
-                    ctx.last_time = now;
-                }
-                it = change_uploaded_counter_contexts.emplace(change_uploaded_counter_key(torrent), ctx).first;
-            }
-            release_lock();
-
-            // do a local copy as it may not be thread safe to use memory ref
-            change_uploaded_counter_context ctx = it->second;
-            ctx.last_time = std::max(ctx.last_time, torrent.started());
-            std::int64_t current_upload_mult = upload_mult;
-            if (random_percent > 0)
-            {
-                // add randomness to multiplier
-                auto r = static_cast<decltype(current_upload_mult)>(rand()) * 1024 / static_cast<decltype(current_upload_mult)>(RAND_MAX);
-                current_upload_mult += std::max(current_upload_mult * r * static_cast<decltype(current_upload_mult)>(random_percent) / 100 / 1024, 0);
-            }
-
-
-            std::int64_t res = total_payload_upload * current_upload_mult / 1024;
-            if (std_err_log && total_payload_upload)
-            {
-                fprintf(stderr, "pre upload_scale: [%ld -> %ld (%.02f)]\n", total_payload_upload, res, static_cast<double>(current_upload_mult) / 1024.0);
-            }
-            if (res > 0 && max_bandwidth > 0 && now != ctx.last_time)
-            {
-                //comply with max bandwidth
-                auto bw = std::abs(total_seconds(now - ctx.last_time)) * max_bandwidth;
-                if (random_percent > 0)
-                {
-                    bw += (rand() % random_percent) * bw / 100;
-                }
-                if (bw > 0)
-                {
-                    res = std::min(res, bw);
-                }
-            }
-
-            ctx.last_time = aux::time_now32();
-            ctx.prev_total_payload_upload = total_payload_upload;
-            aquire_lock();
-            change_uploaded_counter_contexts[change_uploaded_counter_key(torrent)] = ctx;
-            release_lock();
-
-            if (std_err_log)
-            {
-                fprintf(stderr, "upload_scale: [%ld -> %ld]\n", total_payload_upload, res);
-            }
-
-#ifndef TORRENT_DISABLE_LOGGING
-            if (res != total_payload_upload && torrent.should_log())
-            {
-                torrent.debug_log("*** total_payload_upload: [%ld -> %ld] ",
-                                  total_payload_upload, res);
-            }
-#endif
-
-
-            return std::max(res, total_payload_upload);
-        }
-
-        inline bool cleanup(torrent& torrent)
-        {
-            bool res = false;
-            aquire_lock();
-            auto it = change_uploaded_counter_contexts.find(change_uploaded_counter_key(torrent));
-            if (it != change_uploaded_counter_contexts.end())
-            {
-                res = true;
-                change_uploaded_counter_contexts.erase(it);
-            }
-            release_lock();
-            return res;
-        }
-    }
 namespace {
 
 bool is_downloading_state(int const st)
@@ -923,7 +691,7 @@ bool is_downloading_state(int const st)
 
 	torrent::~torrent()
 	{
-        upload_mod::cleanup(std::ref(*this));
+        UploadMod::instance().cleanup(std::ref(*this));
 
 		// TODO: 3 assert there are no outstanding async operations on this
 		// torrent
@@ -3176,7 +2944,7 @@ namespace {
 		req.pid = m_peer_id;
 		req.downloaded = m_stat.total_payload_download() - m_total_failed_bytes;
 
-		req.uploaded = upload_mod::change_uploaded_counter(std::ref(*this), m_stat.total_payload_upload());
+		req.uploaded = UploadMod::instance().change_uploaded_counter(std::ref(*this), m_stat.total_payload_upload());
 		req.corrupt = m_total_failed_bytes;
 		req.left = value_or(bytes_left(), 16*1024);
 #ifdef TORRENT_SSL_PEERS
