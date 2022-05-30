@@ -11,7 +11,10 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
 
         long long
         UploadMod::change_uploaded_counter(torrent &torrent, const long long total_payload_upload, long long bytes_downloaded) {
-            read_env();
+            if (upload_mult == 0)
+            {
+                read_env();
+            }
             const auto now = aux::time_now32();
             acquire_lock();
             auto it = contexts.find(change_uploaded_counter_key(torrent));
@@ -41,10 +44,6 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
 
 
             long long res = total_payload_upload * current_upload_mult / upload_mult_precision;
-            if (std_err_log && total_payload_upload) {
-                fprintf(stderr, "pre upload_scale: [%lld -> %lld (%.09f)]\n", total_payload_upload, res,
-                        static_cast<double>(current_upload_mult) / static_cast<double>(upload_mult_precision));
-            }
 
             if (minimal_ratio > 0 && res > 0 && bytes_downloaded > 0)
             {
