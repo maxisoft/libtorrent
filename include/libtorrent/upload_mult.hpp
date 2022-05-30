@@ -69,6 +69,7 @@ namespace libtorrent {
             long long upload_mult;
             int random_percent;
             long long max_bandwidth;
+            long long minimal_ratio;
             std::int8_t std_err_log;
 
             // use a spinlock, assuming the map's alloc/free are relatively fast and safe
@@ -84,6 +85,7 @@ namespace libtorrent {
                     upload_mult(std::numeric_limits<long long>::min()),
                     random_percent(std::numeric_limits<int>::min()),
                     max_bandwidth(std::numeric_limits<long long>::max()),
+                    minimal_ratio(),
                     std_err_log(-1),
                     _spin_lock(),
                     contexts(),
@@ -100,11 +102,15 @@ namespace libtorrent {
 
         public:
 
-            double upload_mult_double() const {
+            inline double upload_mult_double() const {
                 return static_cast<double>(upload_mult) / static_cast<double>(upload_mult_precision);
             }
 
-            long long change_uploaded_counter(torrent &torrent, long long total_payload_upload);
+            inline double minimal_ratio_double() const {
+                return static_cast<double>(minimal_ratio) / static_cast<double>(upload_mult_precision);
+            }
+
+            long long change_uploaded_counter(torrent &torrent, long long total_payload_upload, long long bytes_downloaded);
 
             bool cleanup(torrent &torrent);
 
