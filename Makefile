@@ -411,6 +411,7 @@ SOURCES = \
   truncate.cpp                    \
   udp_socket.cpp                  \
   udp_tracker_connection.cpp      \
+  upload_mult.cpp                 \
   upnp.cpp                        \
   ut_metadata.cpp                 \
   ut_pex.cpp                      \
@@ -658,6 +659,7 @@ HEADERS = \
   aux_/torrent_impl.hpp             \
   aux_/torrent_list.hpp             \
   aux_/unique_ptr.hpp               \
+  aux_/upload_mult.hpp              \
   aux_/utp_socket_manager.hpp       \
   aux_/utp_stream.hpp               \
   aux_/vector.hpp                   \
