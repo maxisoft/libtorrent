@@ -43,7 +43,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
 
             long long res = total_payload_upload * current_upload_mult / 1024;
             if (std_err_log && total_payload_upload) {
-                fprintf(stderr, "pre upload_scale: [%ld -> %lld (%.02f)]\n", total_payload_upload, res,
+                fprintf(stderr, "pre upload_scale: [%lld -> %lld (%.02f)]\n", total_payload_upload, res,
                         static_cast<double>(current_upload_mult) / 1024.0);
             }
             if (res > 0 && max_bandwidth > 0 && now != ctx.last_time) {
