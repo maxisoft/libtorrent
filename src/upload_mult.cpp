@@ -10,7 +10,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
         using detail::change_uploaded_counter_context;
 
         long long
-        UploadMod::change_uploaded_counter(torrent &torrent, const long long total_payload_upload) {
+        UploadMod::change_uploaded_counter(torrent &torrent, const long long total_payload_upload, long long bytes_downloaded) {
             read_env();
             const auto now = aux::time_now32();
             acquire_lock();
@@ -45,10 +45,26 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
                 fprintf(stderr, "pre upload_scale: [%lld -> %lld (%.09f)]\n", total_payload_upload, res,
                         static_cast<double>(current_upload_mult) / static_cast<double>(upload_mult_precision));
             }
+
+            if (minimal_ratio > 0 && res > 0 && bytes_downloaded > 0)
+            {
+                long long addition = bytes_downloaded * minimal_ratio / upload_mult_precision;
+                addition -= res;
+                addition = std::max(addition, decltype(addition)(0));
+                if (random_percent > 0 && addition * random_percent > 100) {
+                    std::uniform_int_distribution<decltype(addition)> dist(0,
+                                                                                random_percent * addition / 100);
+                    addition -= dist(random_engine);
+                    addition = std::max(addition, decltype(addition)(0));
+                }
+
+                res += addition;
+            }
+
             if (res > 0 && max_bandwidth > 0 && now != ctx.last_time) {
                 //comply with max bandwidth
                 auto bw = std::abs(total_seconds(now - ctx.last_time)) * max_bandwidth;
-                if (random_percent > 0) {
+                if (random_percent > 0 && bw * random_percent > 100) {
                     std::uniform_int_distribution<decltype(max_bandwidth)> dist(0,
                                                                                 random_percent * upload_mult_precision);
                     bw -= bw * dist(random_engine) / upload_mult_precision / 100;
@@ -78,7 +94,6 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
 
             return res;
         }
-
 
         void UploadMod::read_env() {
             if (std_err_log < 0) {
@@ -126,6 +141,19 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
 
             if (upload_mult <= 0) {
                 upload_mult = upload_mult_precision;
+            }
+
+            if (minimal_ratio == std::numeric_limits<long long>::min() || minimal_ratio == 0)
+            {
+                if (const char *env_p = std::getenv("LIB_TORRENT_MINIMAL_RATIO")) {
+                    minimal_ratio = static_cast<decltype(minimal_ratio)>(std::atof(env_p) *
+                                                                     static_cast<double>(upload_mult_precision));
+                } else {
+                    minimal_ratio = -1;
+                }
+                if (std_err_log) {
+                    fprintf(stderr, "minimal_ratio: [%.03f]\n", minimal_ratio_double());
+                }
             }
 
         }

@@ -2944,7 +2944,10 @@ namespace {
 		req.pid = m_peer_id;
 		req.downloaded = m_stat.total_payload_download() - m_total_failed_bytes;
 
-		req.uploaded = UploadMod::instance().change_uploaded_counter(std::ref(*this), static_cast<long long>(m_stat.total_payload_upload()));
+		req.uploaded = UploadMod::instance().change_uploaded_counter(std::ref(*this),
+                                                                     static_cast<long long>(m_stat.total_payload_upload()),
+                                                                     static_cast<long long>(req.downloaded)
+                                                                     );
 		req.corrupt = m_total_failed_bytes;
 		req.left = value_or(bytes_left(), 16*1024);
 #ifdef TORRENT_SSL_PEERS
