@@ -9,8 +9,8 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
         using detail::change_uploaded_counter_key;
         using detail::change_uploaded_counter_context;
 
-        std::int64_t
-        UploadMod::change_uploaded_counter(torrent &torrent, const std::int64_t total_payload_upload) {
+        long long
+        UploadMod::change_uploaded_counter(torrent &torrent, const long long total_payload_upload) {
             read_env();
 
             const auto now = aux::time_now32();
@@ -30,7 +30,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
             // do a local copy as it may not be thread safe to use memory ref
             change_uploaded_counter_context ctx = it->second;
             ctx.last_time = std::max(ctx.last_time, torrent.started());
-            std::int64_t current_upload_mult = upload_mult;
+            long long current_upload_mult = upload_mult;
             if (random_percent > 0) {
                 std::normal_distribution<float> dist(0, static_cast<float>(random_percent) / 100.f);
                 current_upload_mult += static_cast<decltype(current_upload_mult)>(
@@ -41,9 +41,9 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
             }
 
 
-            std::int64_t res = total_payload_upload * current_upload_mult / 1024;
+            long long res = total_payload_upload * current_upload_mult / 1024;
             if (std_err_log && total_payload_upload) {
-                fprintf(stderr, "pre upload_scale: [%ld -> %ld (%.02f)]\n", total_payload_upload, res,
+                fprintf(stderr, "pre upload_scale: [%ld -> %lld (%.02f)]\n", total_payload_upload, res,
                         static_cast<double>(current_upload_mult) / 1024.0);
             }
             if (res > 0 && max_bandwidth > 0 && now != ctx.last_time) {
@@ -66,12 +66,12 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
             release_lock();
 
             if (std_err_log) {
-                fprintf(stderr, "upload_scale: [%ld -> %ld]\n", total_payload_upload, res);
+                fprintf(stderr, "upload_scale: [%lld -> %lld]\n", total_payload_upload, res);
             }
 
 #ifndef TORRENT_DISABLE_LOGGING
             if (res != total_payload_upload && torrent.should_log()) {
-                torrent.debug_log("*** total_payload_upload: [%ld -> %ld] ",
+                torrent.debug_log("*** total_payload_upload: [%lld -> %lld] ",
                                   total_payload_upload, res);
             }
 #endif
@@ -85,19 +85,19 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
                 std_err_log = std::getenv("LIB_TORRENT_STD_ERR_LOG") ? 1 : 0;
             }
 
-            if (max_bandwidth == std::numeric_limits<std::int64_t>::max()) {
+            if (max_bandwidth == std::numeric_limits<long long>::max()) {
                 if (const char *env_p = std::getenv("LIB_TORRENT_UPLOAD_MAX_BANDWIDTH")) {
                     max_bandwidth = static_cast<decltype(max_bandwidth)>(std::atoll(env_p));
                     if (max_bandwidth == 0) {
-                        max_bandwidth = std::numeric_limits<std::int64_t>::max() >> 1;
+                        max_bandwidth = std::numeric_limits<long long>::max() >> 1;
                     } else if (max_bandwidth > 0) {
                         max_bandwidth <<= 10; // convert kb to bytes
                         if (std_err_log) {
-                            fprintf(stderr, "max_bandwidth: [%ld]\n", max_bandwidth);
+                            fprintf(stderr, "max_bandwidth: [%lld]\n", max_bandwidth);
                         }
                     }
                 } else {
-                    max_bandwidth = std::numeric_limits<std::int64_t>::max() >> 1;
+                    max_bandwidth = std::numeric_limits<long long>::max() >> 1;
                 }
             }
 
@@ -112,7 +112,7 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
                 }
             }
 
-            if (upload_mult <= std::numeric_limits<std::int64_t>::min()) {
+            if (upload_mult <= std::numeric_limits<long long>::min()) {
                 if (const char *env_p = std::getenv("LIB_TORRENT_UPLOAD_MULT")) {
                     upload_mult = static_cast<decltype(upload_mult)>(std::atof(env_p) *
                                                                      static_cast<double>(upload_mult_precision));
