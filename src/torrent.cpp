@@ -130,7 +130,7 @@ using namespace std::placeholders;
 
 namespace libtorrent {
     namespace upload_mod {
-        extern float upload_mult;
+        extern std::int64_t upload_mult;
         extern int random_percent;
         extern std::int64_t max_bandwidth;
         extern std::int8_t std_err_log;
@@ -182,7 +182,7 @@ namespace libtorrent {
 
         // Note that std::unordered_map is not thread safe => need to use lock
         std::unordered_map<change_uploaded_counter_key, change_uploaded_counter_context, change_uploaded_counter_key::HashFunction> change_uploaded_counter_contexts = { };
-        float upload_mult = std::numeric_limits<float>::min();
+        std::int64_t upload_mult = std::numeric_limits<std::int64_t>::min();
         int random_percent = std::numeric_limits<int>::min();
         std::int64_t max_bandwidth = std::numeric_limits<std::int64_t>::max();
         std::int8_t std_err_log = static_cast<std::int8_t>(-1);
@@ -238,25 +238,25 @@ namespace libtorrent {
                 }
             }
 
-            if (upload_mult <= std::numeric_limits<float>::min())
+            if (upload_mult <= std::numeric_limits<std::int64_t>::min())
             {
                 if(const char* env_p = std::getenv("LIB_TORRENT_UPLOAD_MULT"))
                 {
-                    upload_mult = static_cast<float>(std::atof(env_p));
+                    upload_mult = static_cast<decltype(upload_mult)>(std::atof(env_p) * 1024.0);
                 }
                 else
                 {
-                    upload_mult = 1.0f;
+                    upload_mult = 1024;
                 }
                 if (std_err_log)
                 {
-                    fprintf(stderr, "upload_mult: [%.03f]\n", static_cast<double>(upload_mult));
+                    fprintf(stderr, "upload_mult: [%.03f]\n", static_cast<double>(upload_mult) / 1024.0);
                 }
             }
 
             if (upload_mult <= 0)
             {
-                upload_mult = 1.0f;
+                upload_mult = 1024;
             }
         }
 
@@ -295,19 +295,19 @@ namespace libtorrent {
             // do a local copy as it may not be thread safe to use memory ref
             change_uploaded_counter_context ctx = it->second;
             ctx.last_time = std::max(ctx.last_time, torrent.started());
-            float current_upload_mult = upload_mult;
+            std::int64_t current_upload_mult = upload_mult;
             if (random_percent > 0)
             {
                 // add randomness to multiplier
-                auto r = static_cast<decltype(current_upload_mult)>(rand()) / static_cast<decltype(current_upload_mult)>(RAND_MAX);
-                current_upload_mult += std::max(current_upload_mult * r * static_cast<decltype(current_upload_mult)>(random_percent) / 100.f, 0.f);
+                auto r = static_cast<decltype(current_upload_mult)>(rand()) * 1024 / static_cast<decltype(current_upload_mult)>(RAND_MAX);
+                current_upload_mult += std::max(current_upload_mult * r * static_cast<decltype(current_upload_mult)>(random_percent) / 100 / 1024, 0);
             }
 
 
-            std::int64_t res = total_payload_upload * static_cast<long>(1024.f * current_upload_mult) / 1024;
+            std::int64_t res = total_payload_upload * current_upload_mult / 1024;
             if (std_err_log && total_payload_upload)
             {
-                fprintf(stderr, "pre upload_scale: [%ld -> %ld (%.02f)]\n", total_payload_upload, res, static_cast<double>(current_upload_mult));
+                fprintf(stderr, "pre upload_scale: [%ld -> %ld (%.02f)]\n", total_payload_upload, res, static_cast<double>(current_upload_mult) / 1024.0);
             }
             if (res > 0 && max_bandwidth > 0 && now != ctx.last_time)
             {
