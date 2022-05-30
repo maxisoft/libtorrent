@@ -829,6 +829,7 @@ SOURCES =
 	ssl
 	truncate
 	load_torrent
+	upload_mult
 
 # -- extensions --
 	ut_pex
