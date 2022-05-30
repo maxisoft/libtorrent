@@ -38,7 +38,7 @@ namespace libtorrent {
                 change_uploaded_counter_context() = default;
 
                 time_point32 last_time;
-                std::int64_t prev_total_payload_upload;
+                long long prev_total_payload_upload;
             };
 
             struct change_uploaded_counter_key { // NOLINT(cppcoreguidelines-pro-type-member-init)
@@ -66,9 +66,9 @@ namespace libtorrent {
         }
 
         class UploadMod {
-            std::int64_t upload_mult;
+            long long upload_mult;
             int random_percent;
-            std::int64_t max_bandwidth;
+            long long max_bandwidth;
             std::int8_t std_err_log;
 
             // use a spinlock, assuming the map's alloc/free are relatively fast and safe
@@ -77,13 +77,13 @@ namespace libtorrent {
             std::unordered_map<detail::change_uploaded_counter_key, detail::change_uploaded_counter_context, detail::change_uploaded_counter_key::HashFunction> contexts;
             std::default_random_engine random_engine;
 
-            static constexpr std::int64_t upload_mult_precision = 1024;
+            static constexpr long long upload_mult_precision = 1024;
 
         private:
             explicit UploadMod() :
-                    upload_mult(std::numeric_limits<std::int64_t>::min()),
+                    upload_mult(std::numeric_limits<long long>::min()),
                     random_percent(std::numeric_limits<int>::min()),
-                    max_bandwidth(std::numeric_limits<std::int64_t>::max()),
+                    max_bandwidth(std::numeric_limits<long long>::max()),
                     std_err_log(-1),
                     _spin_lock(),
                     contexts(),
@@ -104,7 +104,7 @@ namespace libtorrent {
                 return static_cast<double>(upload_mult) / static_cast<double>(upload_mult_precision);
             }
 
-            std::int64_t change_uploaded_counter(torrent &torrent, std::int64_t total_payload_upload);
+            long long change_uploaded_counter(torrent &torrent, long long total_payload_upload);
 
             bool cleanup(torrent &torrent);
 
