@@ -276,7 +276,8 @@ set(libtorrent_aux_include_files
 	vector.hpp
 	win_crypto_provider.hpp
 	win_util.hpp
-)
+	upload_mult.hpp
+		)
 
 set(try_signal_include_files
 	try_signal
@@ -422,7 +423,7 @@ set(sources
 	smart_ban.cpp
 	ut_pex.cpp
 	ut_metadata.cpp
-)
+	upload_mult.cpp)
 
 # -- kademlia --
 set(kademlia_sources
@@ -464,8 +465,7 @@ set(ed25519_sources
 
 set(try_signal_sources
 	try_signal.cpp
-	signal_error_code.cpp
-)
+	signal_error_code.cpp)
 
 list(TRANSFORM sources PREPEND "src/")
 list(TRANSFORM kademlia_sources PREPEND "src/kademlia/")
