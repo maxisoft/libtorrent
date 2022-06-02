@@ -74,7 +74,7 @@ namespace libtorrent {
 
             // use a spinlock, assuming the map's alloc/free are relatively fast and safe
             // (hint: there is no strict guarantees :) )
-            std::atomic_bool _spin_lock;
+            std::atomic_bool spin_lock;
             std::unordered_map<detail::change_uploaded_counter_key, detail::change_uploaded_counter_context, detail::change_uploaded_counter_key::HashFunction> contexts;
             std::default_random_engine random_engine;
 
@@ -87,7 +87,7 @@ namespace libtorrent {
                     max_bandwidth(std::numeric_limits<long long>::max()),
                     minimal_ratio(),
                     std_err_log(-1),
-                    _spin_lock(),
+                    spin_lock(),
                     contexts(),
                     random_engine(std::random_device()()) {
                 read_env();
@@ -126,13 +126,13 @@ namespace libtorrent {
 
             inline void acquire_lock() {
                 bool expected = false;
-                while (!_spin_lock.compare_exchange_weak(expected, true, std::memory_order_acquire)) {
+                while (!spin_lock.compare_exchange_weak(expected, true, std::memory_order_acquire)) {
                     expected = false;
                 }
             }
 
             inline void release_lock() {
-                _spin_lock.store(false, std::memory_order_release);
+                spin_lock.store(false, std::memory_order_release);
             }
 
         };

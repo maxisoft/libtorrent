@@ -174,9 +174,9 @@ namespace libtorrent { // NOLINT(modernize-concat-nested-namespaces)
 
         namespace detail {
             change_uploaded_counter_key::change_uploaded_counter_key(torrent &torrent) : torrent_ptr(
-                    reinterpret_cast<std::uintptr_t>(std::addressof(torrent))), name(torrent.name()),
-                                                                                         info_hash(
-                                                                                                 torrent.info_hash()) {
+                    reinterpret_cast<std::uintptr_t>(std::addressof(torrent))),
+                    name(torrent.name()),
+                    info_hash(torrent.info_hash()) {
             }
         }
     }
