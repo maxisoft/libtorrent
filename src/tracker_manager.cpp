@@ -176,11 +176,6 @@ constexpr tracker_request_flags_t tracker_request::i2p;
 		close();
 	}
 
-	address tracker_connection::bind_interface() const
-	{
-		return m_req.outgoing_socket.get_local_endpoint().address();
-	}
-
 	void tracker_connection::sent_bytes(int bytes)
 	{
 		m_man.sent_bytes(bytes);
@@ -374,7 +369,7 @@ constexpr tracker_request_flags_t tracker_request::i2p;
 		// TODO: 2 implement
 	}
 
-	bool tracker_manager::incoming_packet(char const* hostname
+	bool tracker_manager::incoming_packet(string_view const hostname
 		, span<char const> const buf)
 	{
 		TORRENT_ASSERT(is_single_thread());
@@ -396,7 +391,7 @@ constexpr tracker_request_flags_t tracker_request::i2p;
 			// now, this may not have been meant to be a tracker response,
 			// but chances are pretty good, so it's probably worth logging
 			m_ses.session_log("incoming UDP tracker packet from %s has invalid "
-				"transaction ID (%x)", hostname, int(transaction));
+				"transaction ID (%x)", std::string(hostname).c_str(), int(transaction));
 #endif
 			return false;
 		}

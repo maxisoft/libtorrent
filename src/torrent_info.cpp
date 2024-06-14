@@ -1,10 +1,10 @@
 /*
 
-Copyright (c) 2003-2020, Arvid Norberg
-Copyright (c) 2016-2017, Pavel Pimenov
-Copyright (c) 2016-2019, Steven Siloti
+Copyright (c) 2003-2022, Arvid Norberg
 Copyright (c) 2016-2018, Alden Torres
 Copyright (c) 2016, 2019, Andrei Kurushin
+Copyright (c) 2016-2017, Pavel Pimenov
+Copyright (c) 2016-2019, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -208,10 +208,12 @@ namespace aux {
 			element = string_view();
 		}
 #endif
+#ifdef TORRENT_WINDOWS
 		// this counts the number of unicode characters
 		// we've added (which is different from the number
 		// of bytes)
 		int unicode_chars = 0;
+#endif
 
 		int added = 0;
 		// the number of dots we've added
@@ -234,7 +236,9 @@ namespace aux {
 				// invalid utf8 sequence, replace with "_"
 				path += '_';
 				++added;
+#ifdef TORRENT_WINDOWS
 				++unicode_chars;
+#endif
 				continue;
 			}
 
@@ -248,7 +252,9 @@ namespace aux {
 			if (code_point == '.') ++num_dots;
 
 			added += seq_len;
+#ifdef TORRENT_WINDOWS
 			++unicode_chars;
+#endif
 
 			// any given path element should not
 			// be more than 255 characters
@@ -371,7 +377,7 @@ namespace {
 		// calculations of the size of the merkle tree (which is all 'int'
 		// indices)
 		if (file_size < 0
-			|| (file_size / default_block_size) >= std::numeric_limits<int>::max() / 2
+			|| (file_size / default_block_size) >= file_storage::max_num_pieces
 			|| file_size > file_storage::max_file_size)
 		{
 			ec = errors::torrent_invalid_length;
@@ -922,41 +928,16 @@ namespace {
 
 #ifndef BOOST_NO_EXCEPTIONS
 	torrent_info::torrent_info(bdecode_node const& torrent_file)
-	{
-		error_code ec;
-		if (!parse_torrent_file(torrent_file, ec, load_torrent_limits{}.max_pieces))
-			aux::throw_ex<system_error>(ec);
-
-		INVARIANT_CHECK;
-	}
+		: torrent_info(torrent_file, load_torrent_limits{})
+	{}
 
 	torrent_info::torrent_info(span<char const> buffer, from_span_t)
-	{
-		error_code ec;
-		bdecode_node e = bdecode(buffer, ec);
-		if (ec) aux::throw_ex<system_error>(ec);
-
-		if (!parse_torrent_file(e, ec, load_torrent_limits{}.max_pieces))
-			aux::throw_ex<system_error>(ec);
-
-		INVARIANT_CHECK;
-	}
+		: torrent_info(buffer, load_torrent_limits{}, from_span)
+	{}
 
 	torrent_info::torrent_info(std::string const& filename)
-	{
-		std::vector<char> buf;
-		error_code ec;
-		int ret = load_file(filename, buf, ec);
-		if (ret < 0) aux::throw_ex<system_error>(ec);
-
-		bdecode_node e = bdecode(buf, ec);
-		if (ec) aux::throw_ex<system_error>(ec);
-
-		if (!parse_torrent_file(e, ec, load_torrent_limits{}.max_pieces))
-			aux::throw_ex<system_error>(ec);
-
-		INVARIANT_CHECK;
-	}
+		: torrent_info(filename, load_torrent_limits{})
+	{}
 
 	torrent_info::torrent_info(bdecode_node const& torrent_file
 		, load_torrent_limits const& cfg)
@@ -1181,12 +1162,7 @@ namespace {
 
 		// extract piece length
 		std::int64_t const piece_length = info.dict_find_int_value("piece length", -1);
-		// limit the piece length at INT_MAX / 2 to get a bit of headroom. We
-		// commonly compute the number of blocks per pieces by adding
-		// block_size - 1 before dividing by block_size. That would overflow with
-		// a piece size of INT_MAX. This limit is still an unreasonably large
-		// piece size anyway.
-		if (piece_length <= 0 || piece_length > std::numeric_limits<int>::max() / 2)
+		if (piece_length <= 0 || piece_length > file_storage::max_piece_size)
 		{
 			ec = errors::torrent_missing_piece_length;
 			return false;
@@ -1338,8 +1314,7 @@ namespace {
 		// we want this division to round upwards, that's why we have the
 		// extra addition
 
-		if (files.total_size() / files.piece_length() >=
-			std::numeric_limits<int>::max())
+		if (files.total_size() / files.piece_length() > file_storage::max_num_pieces)
 		{
 			ec = errors::too_many_pieces_in_torrent;
 			// mark the torrent as invalid
@@ -1452,6 +1427,15 @@ namespace {
 			return false;
 		}
 
+		std::set<sha256_hash> all_file_roots;
+		auto const& fs = orig_files();
+		for (file_index_t i : fs.file_range())
+		{
+			if (fs.file_size(i) <= fs.piece_length())
+				continue;
+			all_file_roots.insert(fs.root(i));
+		}
+
 		for (int i = 0; i < e.dict_size(); ++i)
 		{
 			auto const f = e.dict_at(i);
@@ -1463,20 +1447,28 @@ namespace {
 				return false;
 			}
 
+			sha256_hash const root(f.first);
+			if (all_file_roots.find(root) == all_file_roots.end())
+			{
+				// This piece layer doesn't refer to any file in this torrent
+				ec = errors::torrent_invalid_piece_layer;
+				return false;
+			}
+
 			piece_layers.emplace(sha256_hash(f.first), f.second.string_value());
 		}
 
-		m_piece_layers.resize(orig_files().num_files());
+		m_piece_layers.resize(fs.num_files());
 
-		for (file_index_t i : orig_files().file_range())
+		for (file_index_t i : fs.file_range())
 		{
-			if (orig_files().file_size(i) <= orig_files().piece_length())
+			if (fs.file_size(i) <= fs.piece_length())
 				continue;
 
-			auto const piece_layer = piece_layers.find(orig_files().root(i));
+			auto const piece_layer = piece_layers.find(fs.root(i));
 			if (piece_layer == piece_layers.end()) continue;
 
-			int const num_pieces = orig_files().file_num_pieces(i);
+			int const num_pieces = fs.file_num_pieces(i);
 
 			if (ptrdiff_t(piece_layer->second.size()) != num_pieces * sha256_hash::size())
 			{

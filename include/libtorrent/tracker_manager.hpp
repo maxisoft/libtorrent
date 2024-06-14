@@ -1,9 +1,9 @@
 /*
 
 Copyright (c) 2015, Mikhail Titov
-Copyright (c) 2004-2020, Arvid Norberg
-Copyright (c) 2016-2017, Steven Siloti
+Copyright (c) 2004-2021, Arvid Norberg
 Copyright (c) 2016, 2020, Alden Torres
+Copyright (c) 2016-2017, Steven Siloti
 Copyright (c) 2020, Paul-Louis Ageneau
 All rights reserved.
 
@@ -67,6 +67,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/udp_socket.hpp"
 #include "libtorrent/aux_/session_settings.hpp"
 #include "libtorrent/ssl.hpp"
+#include "libtorrent/string_view.hpp"
 
 namespace libtorrent {
 
@@ -164,6 +165,9 @@ enum class event_t : std::uint8_t
 		std::vector<peer_entry> peers;
 		std::vector<ipv4_peer_entry> peers4;
 		std::vector<ipv6_peer_entry> peers6;
+#if TORRENT_USE_I2P
+		std::vector<i2p_peer_entry> i2p_peers;
+#endif
 		// our external IP address (if the tracker responded with ti, otherwise
 		// INADDR_ANY)
 		address external_ip;
@@ -286,7 +290,6 @@ enum class event_t : std::uint8_t
 			, seconds32 interval = seconds32(0), seconds32 min_interval = seconds32(0));
 		virtual void start() = 0;
 		virtual void close() = 0;
-		address bind_interface() const;
 		aux::listen_socket_handle const& bind_socket() const { return m_req.outgoing_socket; }
 		void sent_bytes(int bytes);
 		void received_bytes(int bytes);
@@ -368,9 +371,7 @@ enum class event_t : std::uint8_t
 
 		// this is only used for SOCKS packets, since
 		// they may be addressed to hostname
-		// TODO: 3 make sure the udp_socket supports passing on string-hostnames
-		// too, and that this function is used
-		bool incoming_packet(char const* hostname, span<char const> buf);
+		bool incoming_packet(string_view hostname, span<char const> buf);
 
 		void update_transaction_id(
 			std::shared_ptr<udp_tracker_connection> c

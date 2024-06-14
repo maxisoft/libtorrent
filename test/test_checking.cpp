@@ -1,9 +1,9 @@
 /*
 
-Copyright (c) 2013-2020, Arvid Norberg
+Copyright (c) 2013-2021, Arvid Norberg
 Copyright (c) 2017, Steven Siloti
-Copyright (c) 2018, d-komarov
 Copyright (c) 2018, Alden Torres
+Copyright (c) 2018, d-komarov
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -412,7 +412,7 @@ TORRENT_TEST(discrete_checking)
 	TEST_CHECK(ti->is_valid());
 
 	// we have two files, but there are also two padfiles now
-	TEST_EQUAL(ti->num_files(), 3);
+	TEST_EQUAL(ti->num_files(), 4);
 
 	{
 		session ses1(settings());

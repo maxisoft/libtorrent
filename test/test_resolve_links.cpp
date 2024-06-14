@@ -1,9 +1,9 @@
 /*
 
 Copyright (c) 2018, Steven Siloti
-Copyright (c) 2015-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2015-2017, 2019-2021, Arvid Norberg
 Copyright (c) 2016, 2018, Alden Torres
+Copyright (c) 2016, Andrei Kurushin
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -47,6 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "make_torrent.hpp"
 #include "setup_transfer.hpp" // for wait_for_seeding
+#include "settings.hpp"
 
 #include <functional>
 
@@ -185,9 +186,7 @@ TORRENT_TEST(range_lookup_duplicated_files)
 
 TORRENT_TEST(pick_up_existing_file)
 {
-	lt::settings_pack pack;
-	pack.set_int(settings_pack::alert_mask, 0xffffff);
-	lt::session ses(pack);
+	lt::session ses(settings());
 
 	auto a = torrent_args()
 		.file("34092,name=cruft-1")
@@ -224,7 +223,7 @@ TORRENT_TEST(pick_up_existing_file)
 
 	std::vector<std::int64_t> file_progress;
 	handle.file_progress(file_progress);
-	TEST_CHECK(file_progress[2] == 9000000);
+	TEST_EQUAL(file_progress[2], 9000000);
 }
 
 #else

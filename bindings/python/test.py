@@ -60,7 +60,7 @@ class test_create_torrent(unittest.TestCase):
         fs.add_file('test/file2', 2000)
         self.assertEqual(fs.file_name(0), 'file1')
         self.assertEqual(fs.file_name(1), 'file2')
-        ct = lt.create_torrent(fs)
+        ct = lt.create_torrent(fs, 0, lt.create_torrent.canonical_files_no_tail_padding)
         ct.add_url_seed('foo')
         ct.add_http_seed('bar')
         ct.add_tracker('bar')
@@ -208,7 +208,7 @@ class test_torrent_handle(unittest.TestCase):
         self.assertEqual(new_trackers[1]['fail_limit'], 2)
 
     def test_pickle_trackers(self):
-        """Test lt objects convertors are working and trackers can be pickled"""
+        """Test lt objects converters are working and trackers can be pickled"""
         self.setup()
         tracker = lt.announce_entry('udp://tracker1.com')
         tracker.tier = 0
@@ -388,6 +388,30 @@ class TestAddPiece(unittest.TestCase):
 
         self.wait_until_torrent_finished()
 
+
+class test_load_torrent(unittest.TestCase):
+
+    def test_bytearray(self):
+        # a bytearray object is interpreted as a bencoded buffer
+        atp = lt.load_torrent_buffer(bytearray(lt.bencode({'info': {
+            'name': 'test_torrent', 'length': 1234,
+            'piece length': 16 * 1024,
+            'pieces': 'aaaaaaaaaaaaaaaaaaaa'}})))
+        self.assertEqual(atp.ti.num_files(), 1)
+
+    def test_bytes(self):
+        # a bytes object is interpreted as a bencoded buffer
+        atp = lt.load_torrent_buffer(bytes(lt.bencode({'info': {
+            'name': 'test_torrent', 'length': 1234,
+            'piece length': 16 * 1024,
+            'pieces': 'aaaaaaaaaaaaaaaaaaaa'}})))
+        self.assertEqual(atp.ti.num_files(), 1)
+
+    def test_info_section(self):
+        atp = lt.load_torrent_file('base.torrent')
+
+        self.assertTrue(len(atp.ti.info_section()) != 0)
+        self.assertTrue(len(atp.ti.hash_for_piece(0)) != 0)
 
 class test_torrent_info(unittest.TestCase):
 
@@ -736,6 +760,7 @@ class test_magnet_link(unittest.TestCase):
         ses = lt.session()
         atp = lt.add_torrent_params()
         atp.info_hashes = lt.info_hash_t(lt.sha1_hash(b"a" * 20))
+        atp.save_path = "."
         h = ses.add_torrent(atp)
 
         self.assertTrue(h.status().info_hashes == lt.info_hash_t(lt.sha1_hash(b"a" * 20)))
@@ -743,6 +768,7 @@ class test_magnet_link(unittest.TestCase):
     def test_add_magnet_link(self):
         ses = lt.session()
         atp = lt.add_torrent_params()
+        atp.save_path = "."
         atp.info_hash = lt.sha1_hash(b"a" * 20)
         h = ses.add_torrent(atp)
 

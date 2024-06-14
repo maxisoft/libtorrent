@@ -128,7 +128,7 @@ TORRENT_TEST(status_timers_last_upload)
 				TEST_CHECK(!handle.is_valid());
 				handle = ta->handle;
 				torrent_status st = handle.status();
-				// test last upload and download state before wo go throgh
+				// test last upload and download state before we go through
 				// torrent states
 				TEST_CHECK(st.last_upload == time_point(seconds(0)));
 				TEST_CHECK(st.last_download == time_point(seconds(0)));
@@ -174,7 +174,7 @@ TORRENT_TEST(status_timers_time_shift_with_active_torrent)
 				TEST_CHECK(!handle.is_valid());
 				handle = ta->handle;
 				torrent_status st = handle.status();
-				// test last upload and download state before wo go throgh
+				// test last upload and download state before we go through
 				// torrent states
 				TEST_CHECK(st.last_download == time_point(seconds(0)));
 				TEST_CHECK(st.last_upload == time_point(seconds(0)));
@@ -201,9 +201,9 @@ TORRENT_TEST(status_timers_time_shift_with_active_torrent)
 					break;
 				case 64000:
 					// resume just before we hit the time shift handling
-					// this is needed to test what happend if we want to
+					// this is needed to test what happens if we want to
 					// shift more time then we have active time because
-					// we shift 4 hours and have less then 1 hours active time
+					// we shift 4 hours and have less then 1 hour active time
 					handle.resume();
 					tick_is_in_active_range = true;
 					// don't check every tick
@@ -253,7 +253,7 @@ TORRENT_TEST(finish_time_shift_active)
 				TEST_CHECK(!handle.is_valid());
 				handle = ta->handle;
 				torrent_status st = handle.status();
-				// test last upload and download state before wo go throgh
+				// test last upload and download state before we go through
 				// torrent states
 				TEST_CHECK(st.last_download == time_point(seconds(0)));
 				TEST_CHECK(st.last_upload == time_point(seconds(0)));
@@ -325,7 +325,7 @@ TORRENT_TEST(finish_time_shift_paused)
 				TEST_CHECK(!handle.is_valid());
 				handle = ta->handle;
 				torrent_status st = handle.status();
-				// test last upload and download state before wo go throgh
+				// test last upload and download state before we go through
 				// torrent states
 				TEST_CHECK(st.last_upload == time_point(seconds(0)));
 				TEST_CHECK(st.last_download == time_point(seconds(0)));
@@ -384,6 +384,9 @@ TORRENT_TEST(finish_time_shift_paused)
 // first
 TORRENT_TEST(alert_order)
 {
+#if TORRENT_ABI_VERSION == 1
+	bool received_torrent_add_alert = false;
+#endif
 	bool received_add_torrent_alert = false;
 	int num_torrent_alerts = 0;
 
@@ -398,14 +401,30 @@ TORRENT_TEST(alert_order)
 		, [](lt::add_torrent_params ) {}
 		// on alert
 		, [&](lt::alert const* a, lt::session&) {
+#if TORRENT_ABI_VERSION == 1
+			if (alert_cast<torrent_added_alert>(a))
+			{
+				TEST_EQUAL(received_torrent_add_alert, false);
+				received_torrent_add_alert = true;
+			}
+			else
+#endif
 			if (auto ta = alert_cast<add_torrent_alert>(a))
 			{
+#if TORRENT_ABI_VERSION == 1
+				TEST_EQUAL(received_torrent_add_alert, true);
+#endif
 				TEST_EQUAL(received_add_torrent_alert, false);
 				received_add_torrent_alert = true;
 				handle = ta->handle;
 			}
-
-			if (auto ta = dynamic_cast<torrent_alert const*>(a))
+			else if (dynamic_cast<torrent_log_alert const*>(a))
+			{
+				// it's acceptable to receive torrent_log_alert before
+				// add_torrent_alert, since they are for debugging
+				return;
+			}
+			else if (auto ta = dynamic_cast<torrent_alert const*>(a))
 			{
 				TEST_EQUAL(received_add_torrent_alert, true);
 				TEST_CHECK(handle == ta->handle);
@@ -461,8 +480,8 @@ TORRENT_TEST(active_timer_no_seed)
 			{
 				// some part of the simulation is not deterministic, and causes this to vary
 				// between platforms/compilers
-				TEST_CHECK(active_time >= 10);
-				TEST_CHECK(active_time <= 14);
+				TEST_CHECK(active_time >= 6);
+				TEST_CHECK(active_time <= 9);
 			}
 
 			torrent_status st = handle.status();

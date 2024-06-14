@@ -1,7 +1,7 @@
 /*
 
 Copyright (c) 2017, Steven Siloti
-Copyright (c) 2020, Arvid Norberg
+Copyright (c) 2020, 2022, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -58,6 +58,14 @@ namespace libtorrent { namespace aux {
 		TORRENT_ASSERT(s);
 		if (!s) throw_ex<std::bad_weak_ptr>();
 		return s->ssl == transport::ssl;
+	}
+
+	std::string listen_socket_handle::device() const
+	{
+		auto s = m_sock.lock();
+		TORRENT_ASSERT(s);
+		if (!s) return {};
+		return s->device;
 	}
 
 	listen_socket_t* listen_socket_handle::get() const

@@ -1,8 +1,8 @@
 /*
 
 Copyright (c) 2014-2018, Steven Siloti
-Copyright (c) 2015-2020, Arvid Norberg
 Copyright (c) 2015-2018, Alden Torres
+Copyright (c) 2015-2022, Arvid Norberg
 Copyright (c) 2020, AllSeeingEyeTolledEweSew
 All rights reserved.
 
@@ -282,6 +282,10 @@ namespace libtorrent {
 		// torrent_flags::auto_managed. In order to add a magnet link that will
 		// just download the metadata, but no payload, set the
 		// torrent_flags::upload_mode flag.
+		//
+		// Special consideration has to be taken when adding hybrid torrents
+		// (i.e. torrents that are BitTorrent v2 torrents that are backwards
+		// compatible with v1). For more details, see BitTorrent-v2-torrents_.
 #ifndef BOOST_NO_EXCEPTIONS
 		torrent_handle add_torrent(add_torrent_params&& params);
 		torrent_handle add_torrent(add_torrent_params const& params);

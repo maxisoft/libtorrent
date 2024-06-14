@@ -2,8 +2,8 @@
 
 Copyright (c) 2019, Amir Abrams
 Copyright (c) 2014-2020, Arvid Norberg
-Copyright (c) 2016, Steven Siloti
 Copyright (c) 2016, 2018, Alden Torres
+Copyright (c) 2016, Steven Siloti
 Copyright (c) 2019, Monson Shao
 All rights reserved.
 
@@ -70,7 +70,7 @@ namespace {
 		int const cmp = compare_peers(lhs, rhs);
 		if (cmp != 0) return cmp > 0;
 
-		// when seeding, rotate which peer is unchoked in a round-robin fasion
+		// when seeding, rotate which peer is unchoked in a round-robin fashion
 
 		// the amount uploaded since unchoked (not just in the last round)
 		std::int64_t const u1 = lhs->uploaded_since_unchoked();
@@ -167,7 +167,10 @@ namespace {
 
 		std::int64_t const total_size = t->torrent_file().total_size();
 		if (total_size == 0) return 0;
-		std::int64_t const have_size = std::max(peer->statistics().total_payload_upload()
+		// Cap the given_size so that it never causes the score to increase
+		std::int64_t const given_size = std::min(peer->statistics().total_payload_upload()
+			, total_size / 2);
+		std::int64_t const have_size = std::max(given_size
 			, std::int64_t(t->torrent_file().piece_length()) * peer->num_have_pieces());
 		return int(std::abs((have_size - total_size / 2) * 2000 / total_size));
 	}

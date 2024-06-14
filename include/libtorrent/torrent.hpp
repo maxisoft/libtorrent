@@ -1,16 +1,17 @@
 /*
 
-Copyright (c) 2003-2020, Arvid Norberg
+Copyright (c) 2003-2022, Arvid Norberg
 Copyright (c) 2003, Daniel Wallin
 Copyright (c) 2004, Magnus Jonsson
 Copyright (c) 2016-2020, Alden Torres
+Copyright (c) 2017, AllSeeingEyeTolledEweSew
 Copyright (c) 2017, Falcosc
 Copyright (c) 2017, Pavel Pimenov
-Copyright (c) 2017, AllSeeingEyeTolledEweSew
-Copyright (c) 2018, d-komarov
 Copyright (c) 2018-2019, Steven Siloti
+Copyright (c) 2018, d-komarov
 Copyright (c) 2019, ghbplayer
 Copyright (c) 2020, Paul-Louis Ageneau
+Copyright (c) 2021, AdvenT
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -207,11 +208,19 @@ namespace libtorrent {
 		// web seed from resolving to any local network IPs.
 		bool no_local_ips = false;
 
+		// This means we want to preserve the web seed in resume data, but not
+		// use it for the remainder of this session. For example:
+		// this web seed maye have responded with a redirect. The redirected
+		// URLs have been added as ephemeral. If an ephemeral URL is redirected,
+		// its web seed entry is removed. It could also mean we don't support
+		// the URL protocol, but maybe another client may support it.
+		bool disabled = false;
+
 		// if the web server doesn't support keepalive or a block request was
 		// interrupted, the block received so far is kept here for the next
 		// connection to pick up
 		peer_request restart_request = { piece_index_t(-1), -1, -1};
-		std::vector<char> restart_piece;
+		aux::vector<char> restart_piece;
 
 		// this maps file index to a URL it has been redirected to. If an entry is
 		// missing, it means it has not been redirected and the full path should
@@ -238,6 +247,7 @@ namespace libtorrent {
 			removed = std::move(rhs.removed);
 			ephemeral = std::move(rhs.ephemeral);
 			no_local_ips = std::move(rhs.no_local_ips);
+			disabled = std::move(rhs.disabled);
 			restart_request = std::move(rhs.restart_request);
 			restart_piece = std::move(rhs.restart_piece);
 			redirects = std::move(rhs.redirects);
@@ -386,6 +396,8 @@ namespace libtorrent {
 			update_gauge();
 		}
 
+		bool is_added() const { return m_added; }
+
 		// returns which stats gauge this torrent currently
 		// has incremented.
 		int current_stats_state() const;
@@ -462,6 +474,7 @@ namespace libtorrent {
 		int seed_rank(aux::session_settings const& s) const;
 
 		void add_piece(piece_index_t piece, char const* data, add_piece_flags_t flags);
+		void add_piece_async(piece_index_t piece, std::vector<char> data, add_piece_flags_t flags);
 		void on_disk_write_complete(storage_error const& error
 			, peer_request const& p);
 
@@ -532,6 +545,7 @@ namespace libtorrent {
 		void received_synack(bool ipv6);
 
 		void set_ip_filter(std::shared_ptr<const ip_filter> ipf);
+		void privileged_port_updated();
 		void port_filter_updated();
 		ip_filter const* get_ip_filter() { return m_ip_filter.get(); }
 
@@ -542,6 +556,7 @@ namespace libtorrent {
 		void handle_disk_error(string_view job_name
 			, storage_error const& error, peer_connection* c = nullptr
 			, disk_class rw = disk_class::none);
+		void handle_inconsistent_hashes(piece_index_t piece);
 		void clear_error();
 
 		void set_error(error_code const& ec, file_index_t file);
@@ -553,7 +568,7 @@ namespace libtorrent {
 		void resume();
 
 		void set_session_paused(bool b);
-		void set_paused(bool b, pause_flags_t flags = torrent_handle::clear_disk_cache);
+		void set_paused(bool b, pause_flags_t flags = {});
 		void set_announce_to_dht(bool b) { m_announce_to_dht = b; }
 		void set_announce_to_trackers(bool b) { m_announce_to_trackers = b; }
 		void set_announce_to_lsd(bool b) { m_announce_to_lsd = b; }
@@ -562,7 +577,7 @@ namespace libtorrent {
 
 		time_point32 started() const { return m_started; }
 		void step_session_time(int seconds);
-		void do_pause(pause_flags_t flags = torrent_handle::clear_disk_cache, bool was_paused = false);
+		void do_pause(bool was_paused = false);
 		void do_resume();
 
 		seconds32 finished_time() const;
@@ -575,11 +590,20 @@ namespace libtorrent {
 		void force_recheck();
 		void save_resume_data(resume_data_flags_t flags);
 
-		bool need_save_resume_data() const { return m_need_save_resume_data; }
-
-		void set_need_save_resume()
+		bool need_save_resume_data(resume_data_flags_t flags) const
 		{
-			m_need_save_resume_data = true;
+			return bool(m_need_save_resume_data & flags);
+		}
+
+		void set_need_save_resume(resume_data_flags_t const flag)
+		{
+			// every category sets this bit. TODO: make this flag a combination
+			// of the other ones
+			m_need_save_resume_data |= torrent_handle::only_if_modified;
+
+			if (m_need_save_resume_data & flag) return;
+			m_need_save_resume_data |= flag;
+			state_updated();
 		}
 
 		bool is_auto_managed() const { return m_auto_managed; }
@@ -596,6 +620,7 @@ namespace libtorrent {
 #endif
 #endif // TORRENT_ABI_VERSION
 
+		void post_piece_availability();
 		void piece_availability(aux::vector<int, piece_index_t>& avail) const;
 
 		void set_piece_priority(piece_index_t index, download_priority_t priority);
@@ -622,6 +647,7 @@ namespace libtorrent {
 		void update_piece_priorities(
 			aux::vector<download_priority_t, file_index_t> const& file_prios);
 
+		void post_status(status_flags_t flags);
 		void status(torrent_status* st, status_flags_t flags);
 
 		// this torrent changed state, if the user is subscribing to
@@ -629,6 +655,7 @@ namespace libtorrent {
 		void state_updated();
 
 		void file_progress(aux::vector<std::int64_t, file_index_t>& fp, file_progress_flags_t flags);
+		void post_file_progress(file_progress_flags_t flags);
 
 #if TORRENT_ABI_VERSION == 1
 		void use_interface(std::string net_interface);
@@ -660,7 +687,12 @@ namespace libtorrent {
 // --------------------------------------------
 		// PEER MANAGEMENT
 
+		// A web seed entry that's added because of a redirect is flagged as
+		// ephemeral. We don't want to save these in the resume data.
 		static constexpr web_seed_flag_t ephemeral = 0_bit;
+		// A web seed entry with this flag set is not allowed to resolve to an
+		// IP on a local network. This is part of SSRF mitigation, as it may be
+		// malicious
 		static constexpr web_seed_flag_t no_local_ips = 1_bit;
 
 		// add_web_seed won't add duplicates. If we have already added an entry
@@ -672,12 +704,10 @@ namespace libtorrent {
 			, web_seed_flag_t flags = {});
 
 		void remove_web_seed(std::string const& url, web_seed_t::type_t type);
-		void disconnect_web_seed(peer_connection* p);
 
 		void retry_web_seed(peer_connection* p, boost::optional<seconds32> retry = boost::none);
 
-		void remove_web_seed_conn(peer_connection* p, error_code const& ec
-			, operation_t op, disconnect_severity_t error = peer_connection_interface::normal);
+		void remove_web_seed_conn(peer_connection* peer);
 
 		std::set<std::string> web_seeds(web_seed_entry::type_t type) const;
 
@@ -743,8 +773,10 @@ namespace libtorrent {
 #if TORRENT_ABI_VERSION == 1
 		void get_full_peer_list(std::vector<peer_list_entry>* v) const;
 #endif
+		void post_peer_info();
 		void get_peer_info(std::vector<peer_info>* v);
 		void get_download_queue(std::vector<partial_piece_info>* queue) const;
+		void post_download_queue();
 
 		void update_auto_sequential();
 	private:
@@ -863,7 +895,7 @@ namespace libtorrent {
 
 		// called when we learn that we have a piece
 		// only once per piece
-		void we_have(piece_index_t index);
+		void we_have(piece_index_t index, bool loading_resume = false);
 
 		// process the v2 block hashes for a piece
 		boost::tribool on_blocks_hashed(piece_index_t piece
@@ -925,7 +957,7 @@ namespace libtorrent {
 
 #if TORRENT_USE_I2P
 		void on_i2p_resolve(error_code const& ec, char const* dest);
-		bool is_i2p() const { return m_torrent_file && m_torrent_file->is_i2p(); }
+		bool is_i2p() const { return m_i2p; }
 #endif
 
 		// this is the asio callback that is called when a name
@@ -991,7 +1023,7 @@ namespace libtorrent {
 		// piece_failed is called when a piece fails the hash check
 		// for failures detected with v2 hashes the failing blocks(s)
 		// are specified in blocks
-		// *blocks must be sorted in acending order*
+		// *blocks must be sorted in ascending order*
 		void piece_failed(piece_index_t index, std::vector<int> blocks = std::vector<int>());
 
 		// the peers in "peers" participated in sending a bad piece. If
@@ -1085,6 +1117,7 @@ namespace libtorrent {
 
 		std::vector<std::vector<sha256_hash>> get_piece_layers() const;
 
+		void post_trackers();
 		std::vector<announce_entry> trackers() const;
 
 		// this sets all the "enabled" states on all trackers, giving them
@@ -1403,7 +1436,7 @@ namespace libtorrent {
 		// peers. This vector is ordered, to make lookups fast.
 
 		// TODO: 3 factor out predictive pieces and all operations on it into a
-		// separate class (to use as memeber here instead)
+		// separate class (to use as member here instead)
 		std::vector<piece_index_t> m_predictive_pieces;
 #endif
 
@@ -1628,16 +1661,13 @@ namespace libtorrent {
 		// from a non-downloading/seeding state, the torrent is paused.
 		bool m_stop_when_ready:1;
 
-		// set to false when saving resume data. Set to true
-		// whenever something is downloaded
-		bool m_need_save_resume_data:1;
-
 		// when this is true, this torrent participates in the DHT
 		bool m_enable_dht:1;
 
 		// when this is true, this torrent participates in local service discovery
 		bool m_enable_lsd:1;
 
+		bool m_i2p:1;
 // ----
 
 		// total time we've been available as a seed on this torrent.
@@ -1652,7 +1682,8 @@ namespace libtorrent {
 		// the maximum number of uploads for this torrent
 		std::uint32_t m_max_uploads:24;
 
-		// 8 bits free
+		// bits set to indicate which category of resume data state has updated
+		resume_data_flags_t m_need_save_resume_data;
 
 // ----
 

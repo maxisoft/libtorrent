@@ -29,12 +29,12 @@ jobs:
 
       steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
            submodules: true
 
       - name: install openssl (64 bit)
-        uses: nick-invision/retry@v2
+        uses: nick-fields/retry@v3
         with:
           timeout_minutes: 30
           retry_wait_seconds: 4
@@ -82,7 +82,7 @@ jobs:
 
       steps:
       - name: checkout
-        uses: actions/checkout@v2.3.3
+        uses: actions/checkout@v4
         with:
            submodules: true
 
@@ -97,6 +97,11 @@ jobs:
           cd boost
           .\b2 headers
 
+      - shell: pwsh
+        run: |
+          echo "BOOST_ROOT=$(pwd)/boost" >> $env:GITHUB_ENV
+          echo "$(pwd)/boost" >> $env:GITHUB_PATH
+
   # debug iterators are turned off here because msvc has issues with noexcept
   # specifiers when debug iterators are enabled. Specifically, constructors that
   # allocate memory are still marked as noexcept. That results in program
@@ -105,17 +110,19 @@ jobs:
   # certain unexpected terminations (through exceptions)
       - name: build sims
         run: |
-          set BOOST_ROOT=%CD%\boost
-          set PATH=%BOOST_ROOT%;%PATH%
+          echo %BOOST_ROOT%
+          echo %PATH%
           cd simulation
           b2 --hash release address-model=64 link=static debug-iterators=off invariant-checks=on define=BOOST_ASIO_DISABLE_IOCP asserts=on testing.execute=off
 
       - name: run sims
-        run: |
-          set BOOST_ROOT=%CD%\boost
-          set PATH=%BOOST_ROOT%;%PATH%
-          cd simulation
-          b2 --hash -l700 release address-model=64 link=static debug-iterators=off invariant-checks=on define=BOOST_ASIO_DISABLE_IOCP asserts=on
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 3
+          timeout_minutes: 120
+          command: |
+            cd simulation
+            b2 --hash -l700 release address-model=64 link=static debug-iterators=off invariant-checks=on define=BOOST_ASIO_DISABLE_IOCP asserts=on
 
    build:
       name: Build
@@ -131,7 +138,7 @@ jobs:
 
       steps:
       - name: checkout
-        uses: actions/checkout@v2.3.3
+        uses: actions/checkout@v4
         with:
            submodules: true
 
@@ -142,7 +149,7 @@ jobs:
           bootstrap.bat
 
       - name: install openssl (64 bit)
-        uses: nick-invision/retry@v2
+        uses: nick-fields/retry@v3
         with:
           timeout_minutes: 30
           retry_wait_seconds: 4
@@ -176,3 +183,51 @@ jobs:
           cd tools
           b2 ${{ matrix.config }} address-model=64 warnings=all warnings-as-errors=on
 
+   mingw:
+      name: MingW
+      runs-on: windows-latest
+      continue-on-error: true
+
+      strategy:
+         matrix:
+           include:
+             - config: address-model=64
+
+      steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+           submodules: true
+
+      - name: install openssl (64 bit)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          retry_wait_seconds: 4
+          max_attempts: 3
+          command: choco install openssl --limitoutput --no-progress
+
+      - name: install boost
+        run: |
+          git clone --depth=1 --recurse-submodules -j10 --branch=boost-1.78.0 https://github.com/boostorg/boost.git
+          cd boost
+          bootstrap.bat
+
+      - name: boost headers
+        run: |
+          cd boost
+          .\b2 headers
+
+      - name: Set up MinGW
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          static: 0
+          platform: x64
+
+      - name: tests (deterministic)
+        run: |
+          set BOOST_ROOT=%CD%\boost
+          set PATH=%BOOST_ROOT%;%PATH%
+          set PYTHON_INTERPRETER=python
+          cd test
+          b2 toolset=gcc asserts=on release target-os=windows -l400 warnings=all warnings-as-errors=on ${{ matrix.config }} cxxflags=-Wno-error=array-bounds cxxflags=-Wno-error=stringop-overflow deterministic-tests testing.execute=off

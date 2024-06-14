@@ -1,8 +1,9 @@
 /*
 
-Copyright (c) 2017, Steven Siloti
-Copyright (c) 2017-2020, Arvid Norberg
 Copyright (c) 2017-2018, Alden Torres
+Copyright (c) 2017-2022, Arvid Norberg
+Copyright (c) 2017, Steven Siloti
+Copyright (c) 2021, Vladimir Golovnev (glassez)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -106,6 +107,9 @@ namespace {
 		ret["auto_managed"] = bool(atp.flags & torrent_flags::auto_managed);
 #ifndef TORRENT_DISABLE_SUPERSEEDING
 		ret["super_seeding"] = bool(atp.flags & torrent_flags::super_seeding);
+#endif
+#if TORRENT_USE_I2P
+		ret["i2p"] = bool(atp.flags & torrent_flags::i2p_torrent);
 #endif
 		ret["sequential_download"] = bool(atp.flags & torrent_flags::sequential_download);
 		ret["stop_when_ready"] = bool(atp.flags & torrent_flags::stop_when_ready);
@@ -298,6 +302,11 @@ namespace {
 
 	entry write_torrent_file(add_torrent_params const& atp)
 	{
+		return write_torrent_file(atp, {});
+	}
+
+	entry write_torrent_file(add_torrent_params const& atp, write_torrent_flags_t const flags)
+	{
 		entry ret;
 		if (!atp.ti)
 			aux::throw_ex<system_error>(errors::torrent_missing_info);
@@ -322,11 +331,10 @@ namespace {
 			std::vector<bool> const empty_verified;
 			for (file_index_t f : fs.file_range())
 			{
-				if (fs.pad_file_at(f) || fs.file_size(f) < fs.piece_length())
+				if (fs.pad_file_at(f) || fs.file_size(f) <= fs.piece_length())
 					continue;
 
-				aux::merkle_tree t(fs.file_num_blocks(f)
-					, fs.piece_length() / default_block_size, fs.root_ptr(f));
+				aux::merkle_tree t(fs.file_num_blocks(f), fs.blocks_per_piece(), fs.root_ptr(f));
 
 				std::vector<bool> const& verified = (f >= atp.verified_leaf_hashes.end_index())
 					? empty_verified : atp.verified_leaf_hashes[f];
@@ -351,7 +359,7 @@ namespace {
 					layer += h.to_string();
 			}
 		}
-		else if (atp.ti->v2())
+		else if (atp.ti->v2() && !(flags & write_flags::allow_missing_piece_layer))
 		{
 			// we must have piece layers for v2 torrents for them to be valid
 			// .torrent files
@@ -359,16 +367,48 @@ namespace {
 		}
 
 		// save web seeds
-		if (!atp.url_seeds.empty())
+		if (!atp.url_seeds.empty() && !(flags & write_flags::no_http_seeds))
 		{
-			entry::list_type& url_list = ret["url-list"].list();
+			auto& url_list = ret["url-list"].list();
+			url_list.reserve(atp.url_seeds.size());
 			std::copy(atp.url_seeds.begin(), atp.url_seeds.end(), std::back_inserter(url_list));
 		}
 
-		if (!atp.http_seeds.empty())
+		if (!atp.http_seeds.empty() && !(flags & write_flags::no_http_seeds))
 		{
-			entry::list_type& httpseeds_list = ret["httpseeds"].list();
+			auto& httpseeds_list = ret["httpseeds"].list();
+			httpseeds_list.reserve(atp.http_seeds.size());
 			std::copy(atp.http_seeds.begin(), atp.http_seeds.end(), std::back_inserter(httpseeds_list));
+		}
+
+		// save DHT nodes
+		if (!atp.dht_nodes.empty() && (flags & write_flags::include_dht_nodes))
+		{
+			auto& nodes = ret["nodes"].list();
+			nodes.reserve(atp.dht_nodes.size());
+			for (auto const& n : atp.dht_nodes)
+			{
+				entry::list_type node(2);
+				node[0] = std::move(n.first);
+				node[1] = n.second;
+				nodes.emplace_back(std::move(node));
+			}
+		}
+
+		if (!atp.ti->similar_torrents().empty() && !atp.ti->info("similar"))
+		{
+			auto& l = ret["similar"].list();
+			l.reserve(atp.ti->similar_torrents().size());
+			for (auto const& n : atp.ti->similar_torrents())
+				l.emplace_back(n.to_string());
+		}
+
+		if (!atp.ti->collections().empty() && !atp.ti->info("collections"))
+		{
+			auto& l = ret["collections"].list();
+			l.reserve(atp.ti->collections().size());
+			for (auto const& n : atp.ti->collections())
+				l.emplace_back(n);
 		}
 
 		// save trackers
@@ -377,6 +417,15 @@ namespace {
 		else if (atp.trackers.size() > 1)
 			ret["announce-list"] = build_tracker_list(atp.trackers, atp.tracker_tiers);
 
+		return ret;
+	}
+
+	std::vector<char> write_torrent_file_buf(add_torrent_params const& atp
+		, write_torrent_flags_t flags)
+	{
+		std::vector<char> ret;
+		entry e = write_torrent_file(atp, flags);
+		bencode(std::back_inserter(ret), e);
 		return ret;
 	}
 

@@ -1,7 +1,7 @@
 /*
 
-Copyright (c) 2017-2020, Arvid Norberg
 Copyright (c) 2017, 2020, Alden Torres
+Copyright (c) 2017-2022, Arvid Norberg
 Copyright (c) 2020, Fonic
 All rights reserved.
 
@@ -183,10 +183,16 @@ TORRENT_TEST(alerts_types)
 	TEST_ALERT_TYPE(socks5_alert, 96, alert_priority::normal, alert_category::error);
 	TEST_ALERT_TYPE(file_prio_alert, 97, alert_priority::normal, alert_category::storage);
 	TEST_ALERT_TYPE(oversized_file_alert, 98, alert_priority::normal, alert_category::storage);
+	TEST_ALERT_TYPE(torrent_conflict_alert, 99, alert_priority::high, alert_category::error);
+	TEST_ALERT_TYPE(peer_info_alert, 100, alert_priority::critical, alert_category::status);
+	TEST_ALERT_TYPE(file_progress_alert, 101, alert_priority::critical, alert_category::file_progress);
+	TEST_ALERT_TYPE(piece_info_alert, 102, alert_priority::critical, alert_category::piece_progress);
+	TEST_ALERT_TYPE(piece_availability_alert, 103, alert_priority::critical, alert_category::status);
+	TEST_ALERT_TYPE(tracker_list_alert, 104, alert_priority::critical, alert_category::status);
 
 #undef TEST_ALERT_TYPE
 
-	TEST_EQUAL(num_alert_types, 99);
+	TEST_EQUAL(num_alert_types, 105);
 	TEST_EQUAL(num_alert_types, count_alert_types);
 }
 

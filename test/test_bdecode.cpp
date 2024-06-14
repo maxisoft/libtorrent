@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015-2019, Arvid Norberg
+Copyright (c) 2015-2019, 2022, Arvid Norberg
 Copyright (c) 2017, Steven Siloti
 All rights reserved.
 
@@ -1201,7 +1201,7 @@ TORRENT_TEST(non_owning_refs)
 }
 
 // test that a partial parse can be still be printed up to the
-// point where it faild
+// point where it failed
 TORRENT_TEST(partial_parse)
 {
 	char b[] = "d1:ai1e1:b3:foo1:cli1ei2ee1:dd1:xi1-eee";
@@ -1297,6 +1297,32 @@ TORRENT_TEST(switch_buffer)
 	std::printf("%s\n", string2.c_str());
 
 	TEST_EQUAL(string1, string2);
+}
+
+TORRENT_TEST(long_string_99999999)
+{
+	std::string input;
+	input += "99999999:";
+	input.resize(9 + 99999999, '_');
+
+	error_code ec;
+	int pos;
+	bdecode_node e = bdecode(input, ec, &pos);
+	TEST_EQUAL(e.type(), bdecode_node::string_t);
+	TEST_EQUAL(e.string_value(), input.substr(9));
+}
+
+TORRENT_TEST(long_string_100000000)
+{
+	std::string input;
+	input += "100000000:";
+	input.resize(10 + 100000000, '_');
+
+	error_code ec;
+	int pos;
+	bdecode_node e = bdecode(input, ec, &pos);
+	TEST_EQUAL(e.type(), bdecode_node::string_t);
+	TEST_EQUAL(e.string_value(), input.substr(10));
 }
 
 TORRENT_TEST(data_offset)

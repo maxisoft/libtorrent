@@ -1,8 +1,9 @@
 /*
 
-Copyright (c) 2006-2017, 2019-2020, Arvid Norberg
 Copyright (c) 2015, Thomas
+Copyright (c) 2006-2017, 2019-2020, Arvid Norberg
 Copyright (c) 2015, 2017, Steven Siloti
+Copyright (c) 2015, Thomas Yuan
 Copyright (c) 2016-2018, Alden Torres
 Copyright (c) 2016-2017, Andrei Kurushin
 Copyright (c) 2017, Pavel Pimenov
@@ -117,13 +118,14 @@ void observer::abort()
 {
 	if (flags & flag_done) return;
 	flags |= flag_done;
-	m_algorithm->failed(self(), traversal_algorithm::prevent_request);
+	m_algorithm->abort();
+	m_algorithm->failed(self());
 }
 
 void observer::done()
 {
 	if (flags & flag_done) return;
-	flags |= flag_done;
+	flags |= observer::flag_done;
 	m_algorithm->finished(self());
 }
 
@@ -188,9 +190,7 @@ rpc_manager::~rpc_manager()
 	m_destructing = true;
 
 	for (auto const& t : m_transactions)
-	{
 		t.second->abort();
-	}
 }
 
 void* rpc_manager::allocate_observer()
@@ -219,6 +219,10 @@ void rpc_manager::check_invariant() const
 {
 	for (auto const& t : m_transactions)
 	{
+		TORRENT_ASSERT(t.second->flags & observer::flag_queried);
+		if (!m_destructing)
+			TORRENT_ASSERT(!(t.second->flags & observer::flag_failed));
+		TORRENT_ASSERT(!(t.second->flags & observer::flag_alive));
 		TORRENT_ASSERT(t.second);
 	}
 }
@@ -406,6 +410,13 @@ time_duration rpc_manager::tick()
 	{
 		observer_ptr o = i->second;
 
+		if (o->flags & observer::flag_done)
+		{
+			// remove cancelled requests
+			i = m_transactions.erase(i);
+			continue;
+		}
+
 		time_duration diff = now - o->sent();
 		if (diff >= timeout)
 		{
@@ -498,6 +509,7 @@ bool rpc_manager::invoke(entry& e, udp::endpoint const& target_addr
 	{
 		m_transactions.emplace(tid, o);
 #if TORRENT_USE_ASSERTS
+		TORRENT_ASSERT(o->flags & observer::flag_queried);
 		o->m_was_sent = true;
 #endif
 		return true;

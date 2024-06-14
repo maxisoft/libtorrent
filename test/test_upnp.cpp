@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2007-2010, 2012-2013, 2015-2020, Arvid Norberg
+Copyright (c) 2007-2010, 2012-2013, 2015-2020, 2022, Arvid Norberg
 Copyright (c) 2015, Mike Tzou
 Copyright (c) 2016-2018, Alden Torres
 Copyright (c) 2018, d-komarov
@@ -283,8 +283,10 @@ void run_upnp_test(char const* root_filename, char const* control_name, int igd_
 	std::cout << "router: " << upnp_handler->router_model() << std::endl;
 	TEST_CHECK(!upnp_handler->router_model().empty());
 
-	auto const mapping1 = upnp_handler->add_mapping(portmap_protocol::tcp, 500, ep("127.0.0.1", 500));
-	auto const mapping2 = upnp_handler->add_mapping(portmap_protocol::udp, 501, ep("127.0.0.1", 501));
+	auto const mapping1 = upnp_handler->add_mapping(portmap_protocol::tcp, 500
+		, ep("127.0.0.1", 500), "");
+	auto const mapping2 = upnp_handler->add_mapping(portmap_protocol::udp, 501
+		, ep("127.0.0.1", 501), "");
 
 	for (int i = 0; i < 40; ++i)
 	{
@@ -356,7 +358,7 @@ TORRENT_TEST(upnp_max_mappings)
 	for (int i = 0; i < 50; ++i)
 	{
 		auto const mapping = upnp_handler->add_mapping(portmap_protocol::tcp
-			, 500 + i, ep("127.0.0.1", 500 + i));
+			, 500 + i, ep("127.0.0.1", 500 + i), "");
 
 		TEST_CHECK(mapping != port_mapping_t{-1});
 	}

@@ -1,11 +1,11 @@
 /*
 
+Copyright (c) 2004-2022, Arvid Norberg
 Copyright (c) 2004, Magnus Jonsson
-Copyright (c) 2004-2020, Arvid Norberg
 Copyright (c) 2015, Mikhail Titov
 Copyright (c) 2016-2018, 2020, Alden Torres
-Copyright (c) 2016-2018, Steven Siloti
 Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2016-2018, Steven Siloti
 Copyright (c) 2017, Pavel Pimenov
 Copyright (c) 2020, Paul-Louis Ageneau
 All rights reserved.
@@ -214,7 +214,9 @@ namespace libtorrent {
 			}
 		}
 
-		if (!tracker_req().outgoing_socket)
+		// i2p trackers don't use our outgoing sockets, they use the SAM
+		// connection
+		if (!i2p && !tracker_req().outgoing_socket)
 		{
 			fail(errors::invalid_listen_socket, operation_t::get_interface
 				, "outgoing socket was closed");
@@ -246,15 +248,22 @@ namespace libtorrent {
 			? "curl/7.81.0"
 			: settings.get_str(settings_pack::user_agent);
 
+		auto const ls = bind_socket();
+		bind_info_t bi = [&ls](){
+			if (ls.get() == nullptr)
+				return bind_info_t{};
+			else
+				return bind_info_t{ls.device(), ls.get_local_endpoint().address()};
+		}();
+
 		// when sending stopped requests, prefer the cached DNS entry
 		// to avoid being blocked for slow or failing responses. Chances
 		// are that we're shutting down, and this should be a best-effort
 		// attempt. It's not worth stalling shutdown.
 		aux::proxy_settings ps(settings);
 		m_tracker_connection->get(url, seconds(timeout)
-			, tracker_req().event == event_t::stopped ? 2 : 1
 			, ps.proxy_tracker_connections ? &ps : nullptr
-			, 5, user_agent, bind_interface()
+			, 5, user_agent, bi
 			, (tracker_req().event == event_t::stopped
 				? aux::resolver_interface::cache_only : aux::resolver_flags{})
 				| aux::resolver_interface::abort_on_shutdown
@@ -300,9 +309,12 @@ namespace libtorrent {
 		// be all of them, in which case we should not announce this listen socket
 		// to this tracker
 		auto const ls = bind_socket();
-		endpoints.erase(std::remove_if(endpoints.begin(), endpoints.end()
-			, [&](tcp::endpoint const& ep) { return !ls.can_route(ep.address()); })
-			, endpoints.end());
+		if (ls.get() != nullptr)
+		{
+			endpoints.erase(std::remove_if(endpoints.begin(), endpoints.end()
+				, [&](tcp::endpoint const& ep) { return !ls.can_route(ep.address()); })
+				, endpoints.end());
+		}
 
 		if (endpoints.empty())
 		{
@@ -585,11 +597,9 @@ namespace libtorrent {
 				for (int i = 0; i < len; i += 32)
 				{
 					if (len - i < 32) break;
-					peer_entry p;
-					p.hostname = base32encode(std::string(peers + i, 32), string::i2p);
-					p.hostname += ".b32.i2p";
-					p.port = 6881;
-					resp.peers.push_back(p);
+					i2p_peer_entry p;
+					std::memcpy(p.destination.data(), peers + i, 32);
+					resp.i2p_peers.push_back(p);
 				}
 			}
 			else

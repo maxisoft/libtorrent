@@ -1,8 +1,8 @@
 /*
 
-Copyright (c) 2005, 2007-2010, 2012-2020, Arvid Norberg
-Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2005, 2007-2010, 2012-2021, Arvid Norberg
 Copyright (c) 2016, 2018, 2020, Alden Torres
+Copyright (c) 2016, Andrei Kurushin
 Copyright (c) 2019, Steven Siloti
 All rights reserved.
 
@@ -437,7 +437,7 @@ TORRENT_TEST(get_downloaders)
 	}
 
 	// if we ask for downloaders for a piece that's not
-	// curently being downloaded, we get zeroes back
+	// currently being downloaded, we get zeroes back
 	{
 		std::vector<torrent_peer*> d = p->get_downloaders(1_piece);
 
@@ -621,27 +621,44 @@ TORRENT_TEST(resize)
 {
 	// make sure init preserves priorities
 	auto p = setup_picker("1111111", "       ", "1111111", "");
+	p->set_pad_bytes(0_piece, 10);
+	p->set_pad_bytes(2_piece, 20);
 
 	TEST_EQUAL(p->want().num_pieces, 7);
+	TEST_EQUAL(p->want().pad_bytes, 30);
 	TEST_EQUAL(p->have_want().num_pieces, 0);
+	TEST_EQUAL(p->have_want().pad_bytes, 0);
 	TEST_EQUAL(p->have().num_pieces, 0);
+	TEST_EQUAL(p->have().pad_bytes, 0);
 
 	p->set_piece_priority(0_piece, dont_download);
 	TEST_EQUAL(p->want().num_pieces, 6);
+	TEST_EQUAL(p->want().pad_bytes, 20);
 	TEST_EQUAL(p->have_want().num_pieces, 0);
+	TEST_EQUAL(p->have_want().pad_bytes, 0);
 	TEST_EQUAL(p->have().num_pieces, 0);
+	TEST_EQUAL(p->have().pad_bytes, 0);
 
 	p->we_have(0_piece);
 
 	TEST_EQUAL(p->want().num_pieces, 6);
+	TEST_EQUAL(p->want().pad_bytes, 20);
 	TEST_EQUAL(p->have_want().num_pieces, 0);
+	TEST_EQUAL(p->have_want().pad_bytes, 0);
 	TEST_EQUAL(p->have().num_pieces, 1);
+	TEST_EQUAL(p->have().pad_bytes, 10);
 
 	p->resize(28 * default_piece_size, default_piece_size);
+
+	// the piece priority is expected to be preserved
 	TEST_EQUAL(p->piece_priority(0_piece), dont_download);
+
 	TEST_EQUAL(p->want().num_pieces, 28 - 1);
+	TEST_EQUAL(p->want().pad_bytes, 20);
 	TEST_EQUAL(p->have_want().num_pieces, 0);
+	TEST_EQUAL(p->have_want().pad_bytes, 0);
 	TEST_EQUAL(p->have().num_pieces, 0);
+	TEST_EQUAL(p->have().pad_bytes, 0);
 }
 
 TORRENT_TEST(we_have_all)
@@ -1264,7 +1281,7 @@ TORRENT_TEST(picking_downloading_blocks)
 	// don't pick both busy pieces, if there are already other blocks picked
 	TEST_EQUAL(picked.size(), 7 * blocks_per_piece - 2);
 
-	// make sure we still pick from a partial piece even when prefering whole pieces
+	// make sure we still pick from a partial piece even when preferring whole pieces
 	picked.clear();
 	p->pick_pieces(string2vec(" *     "), picked, 1, blocks_per_piece, nullptr
 		, piece_picker::rarest_first
@@ -1558,7 +1575,7 @@ TORRENT_TEST(bitfield_optimization)
 
 TORRENT_TEST(seed_optimization)
 {
-	// test seed optimizaton
+	// test seed optimization
 	auto p = setup_picker("0000000000000000", "                ", "", "");
 
 	// make sure it's not dirty
@@ -2057,6 +2074,18 @@ TORRENT_TEST(set_pad_bytes)
 	TEST_EQUAL(blocks[1].state, piece_picker::block_info::state_requested);
 	TEST_EQUAL(blocks[2].state, piece_picker::block_info::state_none);
 	TEST_EQUAL(blocks[3].state, piece_picker::block_info::state_finished);
+}
+
+TORRENT_TEST(set_pad_bytes_overflow)
+{
+	int const ps = file_storage::max_piece_size;
+	auto p = setup_picker("11111111111", "           ", "44444444444", "", ps);
+	p->set_pad_bytes(0_piece, ps - 1);
+	p->set_pad_bytes(2_piece, ps - 1);
+	p->set_pad_bytes(4_piece, ps - 1);
+	p->set_pad_bytes(6_piece, ps - 1);
+
+	TEST_EQUAL(p->want().pad_bytes, std::int64_t(ps - 1) * 4);
 }
 
 TORRENT_TEST(pad_bytes_in_piece_bytes)
@@ -2700,7 +2729,7 @@ TORRENT_TEST(piece_extent_affinity_large_pieces)
 TORRENT_TEST(piece_extent_affinity_active_limit)
 {
 	// an extent is two pieces wide, 6 extents total.
-	// make ure we limit the number of extents to 5
+	// make sure we limit the number of extents to 5
 	int const blocks = 128;
 	auto const have_none = "            ";
 

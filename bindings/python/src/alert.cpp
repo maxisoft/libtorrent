@@ -272,6 +272,8 @@ namespace boost
 	POLY(session_stats_alert)
 	POLY(socks5_alert)
 	POLY(file_prio_alert)
+	POLY(oversized_file_alert)
+	POLY(torrent_conflict_alert)
 
 #if TORRENT_ABI_VERSION == 1
 	POLY(anonymous_mode_alert)
@@ -485,19 +487,28 @@ void bind_alert()
         .def("failure_reason", &tracker_error_alert::failure_reason)
         .def_readonly("times_in_row", &tracker_error_alert::times_in_row)
         .def_readonly("error", &tracker_error_alert::error)
+        // TODO: move this to tracker_alert
+        .def_readonly("version", &tracker_error_alert::version)
         ;
 
     class_<tracker_warning_alert, bases<tracker_alert>, noncopyable>(
-        "tracker_warning_alert", no_init);
+        "tracker_warning_alert", no_init)
+        // TODO: move this to tracker_alert
+        .def_readonly("version", &tracker_warning_alert::version)
+        ;
 
     class_<tracker_reply_alert, bases<tracker_alert>, noncopyable>(
         "tracker_reply_alert", no_init)
         .def_readonly("num_peers", &tracker_reply_alert::num_peers)
+        // TODO: move this to tracker_alert
+        .def_readonly("version", &tracker_reply_alert::version)
         ;
 
     class_<tracker_announce_alert, bases<tracker_alert>, noncopyable>(
         "tracker_announce_alert", no_init)
         .def_readonly("event", &tracker_announce_alert::event)
+        // TODO: move this to tracker_alert
+        .def_readonly("version", &tracker_announce_alert::version)
         ;
 
     class_<hash_failed_alert, bases<torrent_alert>, noncopyable>(
@@ -1132,6 +1143,40 @@ void bind_alert()
         "dht_bootstrap_alert", no_init)
         ;
 
+    class_<oversized_file_alert, bases<torrent_alert>, noncopyable>(
+        "oversized_file_alert", no_init)
+        ;
+
+    class_<torrent_conflict_alert, bases<torrent_alert>, noncopyable>(
+        "torrent_conflict_alert", no_init)
+        .add_property("conflicting_torrent", make_getter(&torrent_conflict_alert::conflicting_torrent, by_value()))
+        .add_property("metadata", make_getter(&torrent_conflict_alert::metadata, by_value()))
+        ;
+
+    class_<peer_info_alert, bases<torrent_alert>, noncopyable>(
+        "peer_info_alert", no_init)
+        .add_property("peer_info", make_getter(&peer_info_alert::peer_info, by_value()))
+        ;
+
+    class_<file_progress_alert, bases<torrent_alert>, noncopyable>(
+        "file_progress_alert", no_init)
+        .add_property("files", make_getter(&file_progress_alert::files, by_value()))
+        ;
+
+    class_<piece_info_alert, bases<torrent_alert>, noncopyable>(
+        "piece_info_alert", no_init)
+        .add_property("piece_info", make_getter(&piece_info_alert::piece_info, by_value()))
+        ;
+
+    class_<piece_availability_alert, bases<torrent_alert>, noncopyable>(
+        "piece_availability_alert", no_init)
+        .add_property("piece_availability", make_getter(&piece_availability_alert::piece_availability, by_value()))
+        ;
+
+    class_<tracker_list_alert, bases<torrent_alert>, noncopyable>(
+        "tracker_list_alert", no_init)
+        .add_property("trackers", make_getter(&tracker_list_alert::trackers, by_value()))
+        ;
 }
 
 #ifdef _MSC_VER

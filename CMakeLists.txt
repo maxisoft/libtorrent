@@ -49,6 +49,7 @@ set(libtorrent_include_files
 	extensions.hpp
 	file.hpp
 	file_storage.hpp
+	file_layout.hpp
 	fingerprint.hpp
 	flags.hpp
 	fwd.hpp
@@ -219,10 +220,12 @@ set(libtorrent_aux_include_files
 	disk_io_thread_pool.hpp
 	disk_job_fence.hpp
 	disk_job_pool.hpp
+	drive_info.hpp
 	ed25519.hpp
 	escape_string.hpp
 	export.hpp
 	ffs.hpp
+	file_descriptor.hpp
 	file_progress.hpp
 	file_view_pool.hpp
 	has_block.hpp
@@ -237,6 +240,7 @@ set(libtorrent_aux_include_files
 	lsd.hpp
 	merkle.hpp
 	merkle_tree.hpp
+	netlink_utils.hpp
 	noexcept_movable.hpp
 	numeric_cast.hpp
 	packet_buffer.hpp
@@ -276,6 +280,7 @@ set(libtorrent_aux_include_files
 	utp_stream.hpp
 	vector.hpp
 	win_crypto_provider.hpp
+	win_file_handle.hpp
 	win_util.hpp
 		)
 
@@ -315,6 +320,7 @@ set(sources
 	disk_io_thread_pool.cpp
 	disk_job_fence.cpp
 	disk_job_pool.cpp
+	drive_info.cpp
 	entry.cpp
 	enum_net.cpp
 	error_code.cpp
@@ -342,6 +348,7 @@ set(sources
 	ip_notifier.cpp
 	ip_voter.cpp
 	listen_socket_handle.cpp
+	load_torrent.cpp
 	lsd.cpp
 	magnet_uri.cpp
 	merkle.cpp
@@ -493,6 +500,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES Clang)
 		-Wno-exit-time-destructors
 		-Wno-weak-vtables
 		-Wno-return-std-move-in-c++11
+		-Wno-unsafe-buffer-usage
 		-Wno-unknown-warning-option
 	)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
@@ -535,11 +543,6 @@ if(static_runtime)
 	set(Boost_USE_MULTITHREADED ON)
 	set(Boost_USE_STATIC_RUNTIME ON)
 	set(OPENSSL_MSVC_STATIC_RT ON)
-endif()
-
-if (NOT BUILD_SHARED_LIBS)
-	set(Boost_USE_STATIC_LIBS ON)
-	set(OPENSSL_USE_STATIC_LIBS ON)
 endif()
 
 add_library(torrent-rasterbar
@@ -593,10 +596,16 @@ target_compile_definitions(torrent-rasterbar
 		BOOST_ASIO_NO_DEPRECATED
 	PRIVATE
 		TORRENT_BUILDING_LIBRARY
-		_FILE_OFFSET_BITS=64
 		BOOST_EXCEPTION_DISABLE
 		BOOST_ASIO_HAS_STD_CHRONO
 )
+
+if (NOT WIN32)
+	target_compile_definitions(torrent-rasterbar
+		PRIVATE
+			_FILE_OFFSET_BITS=64
+	)
+endif()
 
 target_link_libraries(torrent-rasterbar
 	PUBLIC
@@ -611,7 +620,7 @@ if (WIN32)
 			debug dbghelp crypt32
 	)
 
-	add_definitions(-D_WIN32_WINNT=0x0600) # target Windows Vista or later
+	add_definitions(-D_WIN32_WINNT=0x0A00) # target Windows 10 or later
 
 	target_compile_definitions(torrent-rasterbar
 		PUBLIC WIN32_LEAN_AND_MEAN # prevent winsock1 to be included
@@ -625,12 +634,14 @@ if (WIN32)
 		)
 		target_compile_options(torrent-rasterbar
 			PRIVATE
+				# allow larger .obj files (with more sections)
+				/bigobj
+				# https://learn.microsoft.com/en-us/cpp/build/reference/permissive-standards-conformance?view=msvc-170
+				/permissive-
 				# https://docs.microsoft.com/en-us/cpp/build/reference/utf-8-set-source-and-executable-character-sets-to-utf-8?view=msvc-170
 				/utf-8
 				# https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
 				/Zc:__cplusplus
-				/MP # for multi-core compilation
-				/bigobj # increase the number of sections for obj files
 		)
 		set_target_properties(torrent-rasterbar PROPERTIES LINK_FLAGS_RELEASE "/OPT:ICF=5 /OPT:REF")
 	endif()
@@ -801,7 +812,7 @@ endif()
 find_public_dependency(Boost REQUIRED)
 target_link_libraries(torrent-rasterbar PUBLIC Boost::headers)
 if (Boost_MAJOR_VERSION LESS_EQUAL 1 AND Boost_MINOR_VERSION LESS 69)
-	find_package(Boost REQUIRED COMPONENTS system)
+	find_public_dependency(Boost REQUIRED COMPONENTS system)
 	target_link_libraries(torrent-rasterbar PUBLIC Boost::system)
 endif()
 

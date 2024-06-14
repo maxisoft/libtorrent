@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2016, 2019-2020, Arvid Norberg
+Copyright (c) 2016, 2019-2020, 2022, Arvid Norberg
 Copyright (c) 2018, Steven Siloti
 All rights reserved.
 
@@ -55,16 +55,15 @@ namespace aux {
 	{
 		explicit posix_storage(storage_params const& p);
 		file_storage const& files() const;
-		file_storage const& orig_files() const { return m_files; }
 		~posix_storage();
 
-		int readv(settings_interface const& sett
-			, span<iovec_t const> bufs
+		int read(settings_interface const& sett
+			, span<char> bufs
 			, piece_index_t const piece, int const offset
 			, storage_error& error);
 
-		int writev(settings_interface const& sett
-			, span<iovec_t const> bufs
+		int write(settings_interface const& sett
+			, span<char> bufs
 			, piece_index_t const piece, int const offset
 			, storage_error& error);
 

@@ -1,9 +1,9 @@
 /*
 
-Copyright (c) 2007-2010, 2013-2020, Arvid Norberg
-Copyright (c) 2016, Pavel Pimenov
-Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2007-2010, 2013-2020, 2022, Arvid Norberg
 Copyright (c) 2016-2017, 2020, Alden Torres
+Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2016, Pavel Pimenov
 Copyright (c) 2020, Paul-Louis Ageneau
 All rights reserved.
 
@@ -58,6 +58,17 @@ POSSIBILITY OF SUCH DAMAGE.
 namespace libtorrent {
 	struct http_connection;
 	class http_parser;
+
+namespace aux {
+
+	struct socket_package
+	{
+		socket_package(io_context& ios) : socket(ios) {}
+		udp::socket socket;
+		std::array<char, 1500> buffer;
+		udp::endpoint remote;
+	};
+}
 
 namespace upnp_errors {
 	// error codes for the upnp_error_category. They hold error codes
@@ -181,7 +192,8 @@ struct TORRENT_EXTRA_EXPORT upnp final
 	// portmap_alert_ respectively. If The mapping fails immediately, the return value
 	// is -1, which means failure. There will not be any error alert notification for
 	// mappings that fail with a -1 return value.
-	port_mapping_t add_mapping(portmap_protocol p, int external_port, tcp::endpoint local_ep);
+	port_mapping_t add_mapping(portmap_protocol p, int external_port, tcp::endpoint local_ep
+		, std::string const& device);
 
 	// This function removes a port mapping. ``mapping_index`` is the index that refers
 	// to the mapping you want to remove, which was returned from add_mapping().
@@ -204,15 +216,15 @@ private:
 
 	std::shared_ptr<upnp> self() { return shared_from_this(); }
 
-	void open_multicast_socket(udp::socket& s, error_code& ec);
-	void open_unicast_socket(udp::socket& s, error_code& ec);
+	void open_multicast_socket(aux::socket_package& s, error_code& ec);
+	void open_unicast_socket(aux::socket_package& s, error_code& ec);
 
 	void map_timer(error_code const& ec);
 	void try_map_upnp();
 	void discover_device_impl();
 
 	void resend_request(error_code const& e);
-	void on_reply(udp::socket& s, error_code const& ec);
+	void on_reply(aux::socket_package& s, error_code const& ec, std::size_t len);
 
 	struct rootdevice;
 	void next(rootdevice& d, port_mapping_t i);
@@ -256,6 +268,9 @@ private:
 		portmap_protocol protocol = portmap_protocol::none;
 		int external_port = 0;
 		tcp::endpoint local_ep;
+		// may be set to a device name, if this mapping is for a network bound
+		// to a specific network device
+		std::string device;
 	};
 
 	struct mapping_t : aux::base_mapping
@@ -263,6 +278,9 @@ private:
 		// the local port for this mapping. If this is set
 		// to 0, the mapping is not in use
 		tcp::endpoint local_ep;
+
+		// may be set to a network device name to bind to
+		std::string device;
 
 		// the number of times this mapping has failed
 		int failcount = 0;
@@ -339,8 +357,8 @@ private:
 
 	// the udp socket used to send and receive
 	// multicast messages on the network
-	udp::socket m_multicast_socket;
-	udp::socket m_unicast_socket;
+	aux::socket_package m_multicast;
+	aux::socket_package m_unicast;
 
 	// used to resend udp packets in case
 	// they time out

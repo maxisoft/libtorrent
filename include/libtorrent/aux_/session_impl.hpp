@@ -1,11 +1,12 @@
 /*
 
-Copyright (c) 2006-2020, Arvid Norberg
+Copyright (c) 2006-2022, Arvid Norberg
 Copyright (c) 2014-2019, Steven Siloti
-Copyright (c) 2015, Thomas
 Copyright (c) 2015-2020, Alden Torres
+Copyright (c) 2015, Thomas
 Copyright (c) 2016-2017, Pavel Pimenov
 Copyright (c) 2020, Paul-Louis Ageneau
+Copyright (c) 2023, Joris Carrier
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -246,7 +247,7 @@ namespace aux {
 		}
 
 		// 0 is natpmp 1 is upnp
-		// the order of these arrays determines the priorty in
+		// the order of these arrays determines the priority in
 		// which their ports will be announced to peers
 		aux::array<listen_port_mapping, 2, portmap_transport> tcp_port_mapping;
 		aux::array<listen_port_mapping, 2, portmap_transport> udp_port_mapping;
@@ -349,7 +350,8 @@ namespace aux {
 				plugins_all_idx = 0, // to store all plugins
 				plugins_optimistic_unchoke_idx = 1, // optimistic_unchoke_feature
 				plugins_tick_idx = 2, // tick_feature
-				plugins_dht_request_idx = 3 // dht_request_feature
+				plugins_dht_request_idx = 3, // dht_request_feature
+				plugins_unknown_torrent_idx = 4 // unknown_torrent_feature
 			};
 
 			template <typename Fun, typename... Args>
@@ -468,6 +470,10 @@ namespace aux {
 
 			void close_connection(peer_connection* p) noexcept override;
 
+#if !defined TORRENT_DISABLE_LOGGING || TORRENT_USE_ASSERTS
+			void validate_setting(int const int_name, int const min, int const max);
+			void validate_settings();
+#endif
 			void apply_settings_pack(std::shared_ptr<settings_pack> pack) override;
 			void apply_settings_pack_impl(settings_pack const& pack);
 			session_settings const& settings() const override { return m_settings; }
@@ -729,7 +735,7 @@ namespace aux {
 
 #if TORRENT_USE_I2P
 			char const* i2p_session() const override { return m_i2p_conn.session_id(); }
-			proxy_settings i2p_proxy() const override;
+			std::string const& local_i2p_endpoint() const override { return m_i2p_conn.local_endpoint(); }
 
 			void on_i2p_open(error_code const& ec);
 			void open_new_incoming_i2p_connection();
@@ -828,7 +834,7 @@ namespace aux {
 			void update_dht_upload_rate_limit();
 			void update_proxy();
 			void update_i2p_bridge();
-			void update_peer_tos();
+			void update_peer_dscp();
 			void update_user_agent();
 			void update_unchoke_limit();
 			void update_connection_speed();
@@ -1326,7 +1332,7 @@ namespace aux {
 
 #ifndef TORRENT_DISABLE_EXTENSIONS
 			// this is a list to allow extensions to potentially remove themselves.
-			std::array<std::vector<std::shared_ptr<plugin>>, 4> m_ses_extensions;
+			std::array<std::vector<std::shared_ptr<plugin>>, 5> m_ses_extensions;
 #endif
 
 #if TORRENT_ABI_VERSION == 1

@@ -551,7 +551,7 @@ cpp
 tos
 BP
 qB
-LT2060
+LT20B0
 iocontrol
 getname
 getpeername
@@ -631,3 +631,6 @@ F7
 I1
 I2
 I3
+SSD
+DAX
+WebDAV

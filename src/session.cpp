@@ -1,7 +1,7 @@
 /*
 
 Copyright (c) 2003, Magnus Jonsson
-Copyright (c) 2003, 2006, 2008-2020, Arvid Norberg
+Copyright (c) 2003, 2006, 2008-2020, 2022, Arvid Norberg
 Copyright (c) 2016, Alden Torres
 Copyright (c) 2017, 2020, Steven Siloti
 All rights reserved.
@@ -53,6 +53,7 @@ namespace libtorrent {
 	constexpr feature_flags_t plugin::tick_feature;
 	constexpr feature_flags_t plugin::dht_request_feature;
 	constexpr feature_flags_t plugin::alert_feature;
+	constexpr feature_flags_t plugin::unknown_torrent_feature;
 #endif
 
 namespace aux {
@@ -340,7 +341,7 @@ namespace {
 			auto s = m_io_service;
 			m_thread = std::make_shared<std::thread>([=]
 			{
-				set_thread_name("Network");
+				set_thread_name("libtorrent-network-thread");
 				s->run();
 			});
 		}

@@ -1,8 +1,9 @@
 /*
 
 Copyright (c) 2014-2015, 2017-2020, Arvid Norberg
-Copyright (c) 2019, Steven Siloti
 Copyright (c) 2019, Alden Torres
+Copyright (c) 2019, Steven Siloti
+Copyright (c) 2021, Matthew Guidry
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -98,8 +99,11 @@ POSSIBILITY OF SUCH DAMAGE.
 # endif
 #endif
 
+// clang on windows complain if you mark a symbol with visibility hidden that's
+// already being exported with dllexport. It seems dllexport doesn't support
+// omitting some members of an exported class
 #if !defined TORRENT_EXPORT_EXTRA \
-  && ((defined __GNUC__ && __GNUC__ >= 4) || defined __clang__)
+  && ((defined __GNUC__ && __GNUC__ >= 4) || defined __clang__) && !defined _WIN32
 # define TORRENT_UNEXPORT __attribute__((visibility("hidden")))
 #else
 # define TORRENT_UNEXPORT

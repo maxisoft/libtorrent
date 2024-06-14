@@ -128,7 +128,7 @@ namespace
 				throw_error_already_set();
 			}
 
-			TORRENT_TRY
+			try
 			{
 				// if the dictionary doesn't contain "key", it will throw, hence
 				// the try-catch here
@@ -153,7 +153,7 @@ namespace
 						break;
 				}
 			}
-			TORRENT_CATCH(...) {}
+			catch (...) {}
 		}
 	}
 
@@ -407,20 +407,29 @@ namespace
         add_torrent_params p;
         dict_to_add_torrent_params(params, p);
 
+        if (p.save_path.empty())
+        {
+            PyErr_SetString(PyExc_KeyError,
+                "save_path must be set in add_torrent_params");
+            throw_error_already_set();
+        }
+
         allow_threading_guard guard;
 
-#ifndef BOOST_NO_EXCEPTIONS
         return s.add_torrent(std::move(p));
-#else
-        error_code ec;
-        return s.add_torrent(std::move(p), ec);
-#endif
     }
 
     void async_add_torrent(lt::session& s, dict params)
     {
         add_torrent_params p;
         dict_to_add_torrent_params(params, p);
+
+        if (p.save_path.empty())
+        {
+            PyErr_SetString(PyExc_KeyError,
+                "save_path must be set in add_torrent_params");
+            throw_error_already_set();
+        }
 
         allow_threading_guard guard;
 
@@ -433,14 +442,16 @@ namespace
         if (p.ti)
             atp.ti = std::make_shared<torrent_info>(*p.ti);
 
+        if (p.save_path.empty())
+        {
+            PyErr_SetString(PyExc_KeyError,
+                "save_path must be set in add_torrent_params");
+            throw_error_already_set();
+        }
+
         allow_threading_guard guard;
 
-#ifndef BOOST_NO_EXCEPTIONS
         return s.add_torrent(std::move(p));
-#else
-        error_code ec;
-        return s.add_torrent(std::move(p), ec);
-#endif
     }
 
     void wrap_async_add_torrent(lt::session& s, lt::add_torrent_params const& p)
@@ -448,6 +459,13 @@ namespace
         add_torrent_params atp = p;
         if (p.ti)
             atp.ti = std::make_shared<torrent_info>(*p.ti);
+
+        if (p.save_path.empty())
+        {
+            PyErr_SetString(PyExc_ValueError,
+                "save_path must be set in add_torrent_params");
+            throw_error_already_set();
+        }
 
         allow_threading_guard guard;
 
@@ -838,6 +856,7 @@ struct dummy2 {};
 struct dummy9 {};
 struct dummy10 {};
 struct dummy11 {};
+struct dummy17 {};
 
 void bind_session()
 {
@@ -1045,6 +1064,7 @@ void bind_session()
     s.attr("disable_lsd") = torrent_flags::disable_lsd;
     s.attr("disable_pex") = torrent_flags::disable_pex;
     s.attr("no_verify_files") = torrent_flags::no_verify_files;
+    s.attr("default_dont_download") = torrent_flags::default_dont_download;
     s.attr("default_flags") = torrent_flags::default_flags;
     }
 
@@ -1137,6 +1157,7 @@ void bind_session()
         .def("post_session_stats", allow_threads(&lt::session::post_session_stats))
         .def("is_listening", allow_threads(&lt::session::is_listening))
         .def("listen_port", allow_threads(&lt::session::listen_port))
+        .def("ssl_listen_port", allow_threads(&lt::session::ssl_listen_port))
 #ifndef TORRENT_DISABLE_DHT
         .def("add_dht_node", &add_dht_node)
 #if TORRENT_ABI_VERSION == 1
@@ -1320,6 +1341,17 @@ void bind_session()
     def("read_resume_data", read_resume_data_wrapper1);
     def("write_resume_data", write_resume_data);
     def("write_resume_data_buf", write_resume_data_buf_);
+
+    entry (*write_torrent_file0)(add_torrent_params const&, write_torrent_flags_t) = &write_torrent_file;
+    def("write_torrent_file", write_torrent_file0, (arg("atp"), arg("flags") = 0));
+    def("write_torrent_file_buf", write_torrent_file_buf, (arg("atp"), arg("flags") = 0));
+
+    {
+        scope s = class_<dummy17>("write_flags");
+        s.attr("allow_missing_piece_layer") = lt::write_flags::allow_missing_piece_layer;
+        s.attr("no_http_seeds") = lt::write_flags::no_http_seeds;
+        s.attr("include_dht_nodes") = lt::write_flags::include_dht_nodes;
+    }
 
 	class_<stats_metric>("stats_metric")
 		.def_readonly("name", &stats_metric::name)

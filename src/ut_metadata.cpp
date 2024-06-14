@@ -6,6 +6,7 @@ Copyright (c) 2015, Steven Siloti
 Copyright (c) 2016-2018, Alden Torres
 Copyright (c) 2017, Andrei Kurushin
 Copyright (c) 2017, Pavel Pimenov
+Copyright (c) 2022, Joris CARRIER
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -75,7 +76,7 @@ namespace {
 		send_buffer_limit = 0x4000 * 10,
 
 		// this is the max number of requests we'll queue
-		// up. If we get more requests tha this, we'll
+		// up. If we get more requests than this, we'll
 		// start rejecting them, claiming we don't have
 		// metadata. If the torrent is greater than 16 MiB,
 		// we may hit this case (and the client requesting
@@ -500,8 +501,12 @@ namespace {
 		int const piece = int(i - m_requested_metadata.begin());
 
 		// don't request the same block more than once every 3 seconds
+		// unless the source is disconnected
+		auto source = m_requested_metadata[piece].source.lock();
 		time_point const now = aux::time_now();
 		if (m_requested_metadata[piece].last_request != min_time()
+			&& source
+			&& !source->m_pc.is_disconnecting()
 			&& total_seconds(now - m_requested_metadata[piece].last_request) < 3)
 			return -1;
 

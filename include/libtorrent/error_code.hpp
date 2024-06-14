@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2008-2011, 2013-2020, Arvid Norberg
+Copyright (c) 2008-2011, 2013-2021, Arvid Norberg
 Copyright (c) 2016-2017, 2019, Steven Siloti
 Copyright (c) 2018, Alden Torres
 All rights reserved.
@@ -546,6 +546,8 @@ namespace errors {
 		explicit storage_error(error_code e): ec(e), file_idx(-1), operation(operation_t::unknown) {}
 		storage_error(error_code e, operation_t const op)
 			: ec(e), file_idx(-1), operation(op) {}
+		storage_error(error_code e, file_index_t f, operation_t const op)
+			: ec(e), file_idx(f), operation(op) {}
 
 		// explicitly converts to true if this object represents an error, and
 		// false if it does not.

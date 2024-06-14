@@ -12,7 +12,7 @@ import cast ;
 
 # we need version numbers in the form X.Y.Z in order to trigger the built-in
 # support for generating symlinks to the installed library
-VERSION = 2.0.6 ;
+VERSION = 2.0.11 ;
 
 BOOST_ROOT = [ modules.peek : BOOST_ROOT ] ;
 CXXFLAGS = [ modules.peek : CXXFLAGS ] ;
@@ -21,6 +21,8 @@ LDFLAGS = [ modules.peek : LDFLAGS ] ;
 ECHO "CXXFLAGS =" $(CXXFLAGS) ;
 ECHO "LDFLAGS =" $(LDFLAGS) ;
 ECHO "OS =" [ os.name ] ;
+
+jam-version = [ modules.peek : JAM_VERSION ] ;
 
 if $(BOOST_ROOT)
 {
@@ -64,6 +66,17 @@ rule linking ( properties * )
 			|| <asio-debugging>on in $(properties) )
 	{
 		result += <library>dbghelp ;
+	}
+
+	if <target-os>windows in $(properties)
+	{
+		switch [ feature.get-values <windows-version> : $(properties) ]
+		{
+			case xp : result += <define>_WIN32_WINNT=0x0501 ;
+			case vista : result += <define>_WIN32_WINNT=0x0600 ;
+			case win7 : result += <define>_WIN32_WINNT=0x0601 ;
+			case win10 : result += <define>_WIN32_WINNT=0x0A00 ;
+		}
 	}
 
 	# gcrypt libraries, if enabled
@@ -153,6 +166,14 @@ rule linking ( properties * )
 		result += <framework>CoreFoundation <framework>SystemConfiguration ;
 	}
 
+	if <target-os>iphone in $(properties)
+	{
+		# boost.asio seems to mis-detect iOS as supporting the __thread
+		# keyword, resulting in the error:
+		# error: thread-local storage is not supported for the current target
+		result += <define>BOOST_ASIO_DISABLE_THREAD_KEYWORD_EXTENSION ;
+	}
+
 	if <toolset>gcc in $(properties)
 		&& <target-os>linux in $(properties)
 		&& ( <asserts>on in $(properties)
@@ -163,10 +184,11 @@ rule linking ( properties * )
 		# which only works on ELF targets with gcc
 		result += <linkflags>-Wl,--export-dynamic <linkflags>-rdynamic ;
 	}
-	else
+	else if [ version.version-less $(jam-version) : 1990 0 ]
 	{
-		# backtraces don't work with visibility=hidden, so we only add that in
-		# the else-block
+		# the visibility feature was introduced in boost-1.69. This was close to
+		# when the verisoning scheme changed from year to (low) version numbers.
+		# in boost-1.70
 		result += <visibility>hidden ;
 	}
 
@@ -201,6 +223,13 @@ rule linking ( properties * )
 	else
 	{
 		result += <library>boost_system ;
+	}
+
+	if ! <target-os>windows in $(properties)
+	{
+		# MingW defines a macro called "stat" if this is set, which causes build
+		# failures
+		result += <define>_FILE_OFFSET_BITS=64 ;
 	}
 
 	result += <define>BOOST_ALL_NO_LIB
@@ -252,6 +281,10 @@ rule warnings ( properties * )
 
 # libtorrent uses alloca() carefully
 		result += <cxxflags>-Wno-alloca ;
+
+# these warnings should all be addressed. Either by transitioning to span and
+# array, or by suppressing the warning for specific code
+		result += <cxxflags>-Wno-unsafe-buffer-usage ;
 	}
 
 	if <toolset>gcc in $(properties)
@@ -300,8 +333,8 @@ rule building ( properties * )
 		result += <build>no ;
 	}
 
-	local VERSION = [ feature.get-values <cxxstd> : $(properties) ] ;
-	if ! $(VERSION) || $(VERSION) < 14
+	local CXXVER = [ feature.get-values <cxxstd> : $(properties) ] ;
+	if ! $(CXXVER) || $(CXXVER) < 14
 	{
 		ECHO "libtorrent requires at least C++14. Specify cxxstd=14 or higher" ;
 		result += <build>no ;
@@ -311,9 +344,19 @@ rule building ( properties * )
 	{
 		# allow larger .obj files (with more sections)
 		result += <cxxflags>/bigobj ;
+
 		# https://docs.microsoft.com/en-us/cpp/build/reference/utf-8-set-source-and-executable-character-sets-to-utf-8?view=msvc-170
 		result += <cxxflags>/utf-8 ;
+
+		# two-phase lookup is not supported by C++/CX on msvc, so it needs to be
+		# disabled. We can't set permissive- in that case
+		if ! <windows-api>store in $(properties)
+		{
+			# https://learn.microsoft.com/en-us/cpp/build/reference/permissive-standards-conformance?view=msvc-170
+			result += <cxxflags>/permissive- ;
+		}
 	}
+
 
 	if <toolset>gcc in $(properties) && <target-os>windows in $(properties)
 	{
@@ -402,6 +445,7 @@ rule openssl-lib-path ( properties * )
 		local address_model = [ feature.get-values <address-model> : $(properties) ] ;
 		OPENSSL_LIB += "C:/Program Files/OpenSSL-Win$(address_model)/lib" ;
 		OPENSSL_LIB += "C:/Program Files (x86)/OpenSSL-Win$(address_model)/lib" ;
+		OPENSSL_LIB += "C:/Program Files/OpenSSL/lib" ;
 	}
 
 	local result ;
@@ -429,6 +473,7 @@ rule openssl-include-path ( properties * )
 		local address_model = [ feature.get-values <address-model> : $(properties) ] ;
 		OPENSSL_INCLUDE += "C:/Program Files/OpenSSL-Win$(address_model)/include" ;
 		OPENSSL_INCLUDE += "C:/Program Files (x86)/OpenSSL-Win$(address_model)/include" ;
+		OPENSSL_INCLUDE += "C:/Program Files/OpenSSL/include" ;
 	}
 
 	local result ;
@@ -544,11 +589,7 @@ feature.compose <asserts>on : <define>TORRENT_USE_ASSERTS=1 ;
 feature.compose <asserts>production : <define>TORRENT_USE_ASSERTS=1 <define>TORRENT_PRODUCTION_ASSERTS=1 ;
 feature.compose <asserts>system : <define>TORRENT_USE_ASSERTS=1 <define>TORRENT_USE_SYSTEM_ASSERTS=1 ;
 
-feature windows-version : vista win7 win10 xp : composite propagated ;
-feature.compose <windows-version>vista : <define>_WIN32_WINNT=0x0600 ;
-feature.compose <windows-version>win7 : <define>_WIN32_WINNT=0x0601 ;
-feature.compose <windows-version>win10 : <define>_WIN32_WINNT=0x0A00 ;
-feature.compose <windows-version>xp : <define>_WIN32_WINNT=0x0501 ;
+feature windows-version : win10 vista xp win7 : composite propagated ;
 
 feature extensions : on off : composite propagated link-incompatible ;
 feature.compose <extensions>off : <define>TORRENT_DISABLE_EXTENSIONS ;
@@ -574,6 +615,9 @@ feature.compose <utp-log>on : <define>TORRENT_UTP_LOG_ENABLE ;
 
 feature simulate-slow-read : off on : composite propagated ;
 feature.compose <simulate-slow-read>on : <define>TORRENT_SIMULATE_SLOW_READ ;
+
+feature simulate-slow-write : off on : composite propagated ;
+feature.compose <simulate-slow-write>on : <define>TORRENT_SIMULATE_SLOW_WRITE ;
 
 feature logging : on off : composite propagated link-incompatible ;
 feature.compose <logging>off : <define>TORRENT_DISABLE_LOGGING ;
@@ -724,6 +768,7 @@ SOURCES =
 	disabled_disk_io
 	disk_job_fence
 	disk_job_pool
+	drive_info
 	entry
 	error_code
 	file_storage
@@ -828,6 +873,7 @@ SOURCES =
 	posix_storage
 	ssl
 	truncate
+	load_torrent
 	upload_mult
 
 # -- extensions --
@@ -876,7 +922,6 @@ local usage-requirements =
 	<include>./include
 	<include>./include/libtorrent
 	<variant>release:<define>NDEBUG
-	<define>_FILE_OFFSET_BITS=64
 # enable cancel support in asio
 	<define>BOOST_ASIO_ENABLE_CANCELIO
 # make sure asio uses std::chrono
@@ -941,8 +986,10 @@ rule install-paths ( properties * )
 	# package.paths was introduced in boost-1.70 (2018.02)
 	# however, boost build's versioning scheme changed in boost-1.71 to version
 	# 4.0
-	local boost-build-version = [ SPLIT_BY_CHARACTERS [ version.boost-build ] : "-" ] ;
-	if [ version.version-less [ SPLIT_BY_CHARACTERS $(boost-build-version[1]) : "." ] : 2018 03 ]
+	# so, if versions are 4.0+ we want to use package.paths, but if it's a year,
+	# say 2018, that means it's old and we use the fallback below. Any version <
+	# 1990 is considered the 4.0 and later numbering scheme.
+	if [ version.version-less 1990 0 : $(jam-version) ]
 	{
 		import option ;
 		import property ;
@@ -981,8 +1028,8 @@ rule generate-pkg-config ( properties * )
 
 	p = [ install-paths $(properties) ] ;
 
-	local libdir = $(p[0]) ;
-	local includes = $(p[1]) ;
+	local libdir = $(p[1]) ;
+	local includes = $(p[2]) ;
 
 	local defines ;
 	local shared_deps ;

@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2013, 2015-2017, 2019, Arvid Norberg
+Copyright (c) 2013, 2015-2017, 2019-2022, Arvid Norberg
 Copyright (c) 2017, 2019, Steven Siloti
 Copyright (c) 2018, Alden Torres
 All rights reserved.
@@ -280,7 +280,7 @@ TORRENT_TEST(file_path_hash)
 	TEST_EQUAL(file_hash0, file_hash1);
 }
 
-// make sure we fill in padding with small files
+// make sure every file is tail padded
 TORRENT_TEST(canonicalize_pad)
 {
 	file_storage fs;
@@ -291,7 +291,7 @@ TORRENT_TEST(canonicalize_pad)
 
 	fs.canonicalize();
 
-	TEST_EQUAL(fs.num_files(), 5);
+	TEST_EQUAL(fs.num_files(), 6);
 
 	TEST_EQUAL(fs.file_size(0_file), 1);
 	TEST_EQUAL(fs.file_name(0_file), "1");
@@ -310,6 +310,9 @@ TORRENT_TEST(canonicalize_pad)
 	TEST_EQUAL(fs.file_size(4_file), 0x7001);
 	TEST_EQUAL(fs.file_name(4_file), "3");
 	TEST_EQUAL(fs.pad_file_at(4_file), false);
+
+	TEST_EQUAL(fs.file_size(5_file), 0x8000 - 0x7001);
+	TEST_EQUAL(fs.pad_file_at(5_file), true);
 }
 
 // make sure canonicalize sorts by path correctly
@@ -973,18 +976,27 @@ TORRENT_TEST(file_num_blocks)
 	fs.add_file("test/2", 0x8000, {}, 0, {}, "01234567890123456789012345678901");
 	fs.add_file("test/3", 0x8001, {}, 0, {}, "01234567890123456789012345678901");
 	fs.add_file("test/4", 1, {}, 0, {}, "01234567890123456789012345678901");
+	fs.add_file("test/5", 0, {}, 0, {}, "01234567890123456789012345678901");
+
+	fs.canonicalize();
 
 	// generally the number of blocks in a file is:
 	// (file_size + lt::default_block_size - 1) / lt::default_block_size
 
 	TEST_EQUAL(fs.file_num_blocks(file_index_t{0}), 2);
 	// pad file at index 1
+	TEST_CHECK(fs.pad_file_at(1_file));
 	TEST_EQUAL(fs.file_num_blocks(file_index_t{2}), 1);
 	// pad file at index 3
+	TEST_CHECK(fs.pad_file_at(3_file));
 	TEST_EQUAL(fs.file_num_blocks(file_index_t{4}), 2);
 	TEST_EQUAL(fs.file_num_blocks(file_index_t{5}), 3);
 	// pad file at index 6
+	TEST_CHECK(fs.pad_file_at(6_file));
 	TEST_EQUAL(fs.file_num_blocks(file_index_t{7}), 1);
+	// pad file at index 8
+	TEST_CHECK(fs.pad_file_at(8_file));
+	TEST_EQUAL(fs.file_num_blocks(file_index_t{9}), 0);
 }
 
 TORRENT_TEST(file_num_pieces)
@@ -996,18 +1008,27 @@ TORRENT_TEST(file_num_pieces)
 	fs.add_file("test/2", 0x8000, {}, 0, {}, "01234567890123456789012345678901");
 	fs.add_file("test/3", 0x8001, {}, 0, {}, "01234567890123456789012345678901");
 	fs.add_file("test/4", 1, {}, 0, {}, "01234567890123456789012345678901");
+	fs.add_file("test/5", 0, {}, 0, {}, "01234567890123456789012345678901");
+
+	fs.canonicalize();
 
 	// generally the number of blocks in a file is:
 	// (file_size + lt::default_block_size - 1) / lt::default_block_size
 
 	TEST_EQUAL(fs.file_num_pieces(file_index_t{0}), 1);
 	// pad file at index 1
+	TEST_CHECK(fs.pad_file_at(1_file));
 	TEST_EQUAL(fs.file_num_pieces(file_index_t{2}), 1);
 	// pad file at index 3
+	TEST_CHECK(fs.pad_file_at(3_file));
 	TEST_EQUAL(fs.file_num_pieces(file_index_t{4}), 1);
 	TEST_EQUAL(fs.file_num_pieces(file_index_t{5}), 2);
 	// pad file at index 6
+	TEST_CHECK(fs.pad_file_at(6_file));
 	TEST_EQUAL(fs.file_num_pieces(file_index_t{7}), 1);
+	// pad file at index 8
+	TEST_CHECK(fs.pad_file_at(8_file));
+	TEST_EQUAL(fs.file_num_pieces(file_index_t{9}), 0);
 }
 
 namespace {

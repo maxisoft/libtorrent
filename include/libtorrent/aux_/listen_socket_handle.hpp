@@ -2,7 +2,7 @@
 
 Copyright (c) 2017, Steven Siloti
 Copyright (c) 2018, Alden Torres
-Copyright (c) 2020, Arvid Norberg
+Copyright (c) 2020, 2022, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -63,6 +63,8 @@ namespace libtorrent { namespace aux {
 		address get_external_address() const;
 		tcp::endpoint get_local_endpoint() const;
 		bool can_route(address const&) const;
+
+		std::string device() const;
 
 		bool is_ssl() const;
 

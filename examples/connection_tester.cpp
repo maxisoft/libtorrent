@@ -1,10 +1,10 @@
 /*
 
-Copyright (c) 2010-2020, Arvid Norberg
+Copyright (c) 2010-2022, Arvid Norberg
 Copyright (c) 2015, Mike Tzou
-Copyright (c) 2016-2017, Steven Siloti
-Copyright (c) 2016, Andrei Kurushin
 Copyright (c) 2016, 2018, Alden Torres
+Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2016-2017, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -81,7 +81,7 @@ void generate_block(span<std::uint32_t> buffer, piece_index_t const piece
 // in order to circumvent the restricton of only
 // one connection per IP that most clients implement
 // all sockets created by this tester are bound to
-// uniqe local IPs in the range (127.0.0.1 - 127.255.255.255)
+// unique local IPs in the range (127.0.0.1 - 127.255.255.255)
 // it's only enabled if the target is also on the loopback
 int local_if_counter = 0;
 bool local_bind = false;
@@ -312,7 +312,7 @@ struct peer_conn
 			write_uint32(1, ptr);
 			write_uint8(1, ptr);
 			boost::asio::async_write(s, boost::asio::buffer(write_buf_proto, std::size_t(ptr - write_buf_proto))
-				, std::bind(&peer_conn::on_have_all_sent, this, _1, _2));
+				, std::bind(&peer_conn::on_sent, this, _1, _2, "ERROR SENT HAVE ALL"));
 		}
 		else
 		{
@@ -327,15 +327,15 @@ struct peer_conn
 			write_uint32(1, ptr);
 			write_uint8(1, ptr);
 			boost::asio::async_write(s, boost::asio::buffer(buffer, std::size_t(len + 10))
-				, std::bind(&peer_conn::on_have_all_sent, this, _1, _2));
+				, std::bind(&peer_conn::on_sent, this, _1, _2, "ERROR SENT HAVE ALL"));
 		}
 	}
 
-	void on_have_all_sent(error_code const& ec, size_t)
+	void on_sent(error_code const& ec, size_t, char const* msg)
 	{
 		if (ec)
 		{
-			close("ERROR SEND HAVE ALL", ec);
+			close(msg, ec);
 			return;
 		}
 
@@ -484,7 +484,7 @@ struct peer_conn
 		unsigned int length = read_uint32(ptr);
 		if (length > sizeof(buffer))
 		{
-			std::fprintf(stderr, "len: %d\n", length);
+			std::fprintf(stderr, "len: %u\n", length);
 			close("ERROR RECEIVE MESSAGE PREFIX: packet too big", error_code());
 			return;
 		}
@@ -703,7 +703,7 @@ struct peer_conn
 		std::array<boost::asio::const_buffer, 2> vec;
 		vec[0] = boost::asio::buffer(write_buf_proto, std::size_t(ptr - write_buf_proto));
 		vec[1] = boost::asio::buffer(write_buffer, std::size_t(length));
-		boost::asio::async_write(s, vec, std::bind(&peer_conn::on_have_all_sent, this, _1, _2));
+		boost::asio::async_write(s, vec, std::bind(&peer_conn::on_sent, this, _1, _2, "ERROR SENT PIECE"));
 		++blocks_sent;
 		if (churn && (blocks_sent % churn) == 0 && seed) {
 			outstanding_requests = 0;
@@ -718,7 +718,7 @@ struct peer_conn
 		write_uint32(5, ptr);
 		write_uint8(4, ptr);
 		write_uint32(static_cast<int>(piece), ptr);
-		boost::asio::async_write(s, boost::asio::buffer(write_buf_proto, 9), std::bind(&peer_conn::on_have_all_sent, this, _1, _2));
+		boost::asio::async_write(s, boost::asio::buffer(write_buf_proto, 9), std::bind(&peer_conn::on_sent, this, _1, _2, "ERROR SENT HAVE"));
 	}
 };
 
@@ -864,7 +864,7 @@ void generate_torrent(std::vector<char>& buf, int num_pieces, int num_files
 	for (auto& i : threads)
 		i.join();
 
-	for (auto i : t.files().piece_range())
+	for (auto i : t.piece_range())
 		t.set_hash(i, hashes[i]);
 
 	bencode(std::back_inserter(buf), t.generate());
@@ -916,7 +916,7 @@ void write_handler(file_storage const& fs
 	disk.submit_jobs();
 }
 
-void generate_data(char const* path, torrent_info const& ti)
+void generate_data(std::string const path, torrent_info const& ti)
 {
 	io_context ios;
 	counters stats_counters;
@@ -1091,9 +1091,9 @@ int main(int argc, char* argv[])
 			// 1 MiB piece size
 			const int piece_size = 1024 * 1024;
 			lt::create_torrent t(fs, piece_size, lt::create_torrent::v1_only);
-			sha1_hash zero(nullptr);
-			for (auto const k : fs.piece_range())
-				t.set_hash(k, zero);
+			sha1_hash dummy("abcdefghijklmnopqrst");
+			for (auto const k : t.piece_range())
+				t.set_hash(k, dummy);
 
 			int tier = 0;
 			for (auto const& tr : trackers)

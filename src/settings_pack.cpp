@@ -1,10 +1,10 @@
 /*
 
-Copyright (c) 2014-2020, Arvid Norberg
+Copyright (c) 2014-2022, Arvid Norberg
 Copyright (c) 2015, Thomas Yuan
 Copyright (c) 2016-2018, Alden Torres
-Copyright (c) 2017, Steven Siloti
 Copyright (c) 2017, Andrei Kurushin
+Copyright (c) 2017, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -148,7 +148,7 @@ constexpr int DISK_WRITE_MODE = settings_pack::enable_os_cache;
 		SET(proxy_username, "", &session_impl::update_proxy),
 		SET(proxy_password, "", &session_impl::update_proxy),
 		SET(i2p_hostname, "", &session_impl::update_i2p_bridge),
-		SET(peer_fingerprint, "-LT2060-", nullptr),
+		SET(peer_fingerprint, "-LT20B0-", nullptr),
 		SET(dht_bootstrap_nodes, "dht.libtorrent.org:25401", &session_impl::update_dht_bootstrap_nodes)
 	}});
 
@@ -284,7 +284,7 @@ constexpr int DISK_WRITE_MODE = settings_pack::enable_os_cache;
 		SET(disk_io_read_mode, settings_pack::enable_os_cache, nullptr),
 		SET(outgoing_port, 0, nullptr),
 		SET(num_outgoing_ports, 0, nullptr),
-		SET(peer_tos, 0x04, &session_impl::update_peer_tos),
+		SET(peer_dscp, 0x04, &session_impl::update_peer_dscp),
 		SET(active_downloads, 3, &session_impl::trigger_auto_manage),
 		SET(active_seeds, 5, &session_impl::trigger_auto_manage),
 		SET(active_checking, 1, &session_impl::trigger_auto_manage),
@@ -346,7 +346,7 @@ constexpr int DISK_WRITE_MODE = settings_pack::enable_os_cache;
 		SET(torrent_connect_boost, 30, nullptr),
 		SET(alert_queue_size, 2000, &session_impl::update_alert_queue_size),
 		SET(max_metadata_size, 3 * 1024 * 10240, nullptr),
-		SET(hashing_threads, 2, &session_impl::update_disk_threads),
+		SET(hashing_threads, 1, &session_impl::update_disk_threads),
 		SET(checking_mem_usage, 256, nullptr),
 		SET(predictive_piece_announce, 0, nullptr),
 		SET(aio_threads, 10, &session_impl::update_disk_threads),
@@ -396,6 +396,12 @@ constexpr int DISK_WRITE_MODE = settings_pack::enable_os_cache;
 		SET(dht_max_infohashes_sample_count, 20, nullptr),
 		SET(max_piece_count, 0x200000, nullptr),
 		SET(metadata_token_limit, 2500000, nullptr),
+		SET(disk_write_mode, settings_pack::mmap_write_mode_t::auto_mmap_write, nullptr),
+		SET(mmap_file_size_cutoff, 40, nullptr),
+		SET(i2p_inbound_quantity, 3, nullptr),
+		SET(i2p_outbound_quantity, 3, nullptr),
+		SET(i2p_inbound_length, 3, nullptr),
+		SET(i2p_outbound_length, 3, nullptr)
 	}});
 
 #undef SET
@@ -421,6 +427,11 @@ constexpr int DISK_WRITE_MODE = settings_pack::enable_os_cache;
 			if (key != bool_settings[k].name) continue;
 			return settings_pack::bool_type_base + k;
 		}
+
+		// backwards compatibility with previous name
+		if (key == "peer_tos")
+			return settings_pack::peer_dscp;
+
 		return -1;
 	}
 
@@ -767,7 +778,13 @@ constexpr int DISK_WRITE_MODE = settings_pack::enable_os_cache;
 		auto i = std::lower_bound(m_strings.begin(), m_strings.end(), v
 				, &compare_first<std::string>);
 		if (i != m_strings.end() && i->first == name) return i->second;
-		return empty;
+
+		if (str_settings[name & index_mask].default_value == nullptr)
+			return empty;
+
+		static std::string tmp;
+		tmp = str_settings[name & index_mask].default_value;
+		return tmp;
 	}
 
 	int settings_pack::get_int(int name) const
@@ -786,7 +803,8 @@ constexpr int DISK_WRITE_MODE = settings_pack::enable_os_cache;
 		auto i = std::lower_bound(m_ints.begin(), m_ints.end(), v
 				, &compare_first<int>);
 		if (i != m_ints.end() && i->first == name) return i->second;
-		return 0;
+
+		return int_settings[name & index_mask].default_value;
 	}
 
 	bool settings_pack::get_bool(int name) const
@@ -805,7 +823,8 @@ constexpr int DISK_WRITE_MODE = settings_pack::enable_os_cache;
 		auto i = std::lower_bound(m_bools.begin(), m_bools.end(), v
 			, &compare_first<bool>);
 		if (i != m_bools.end() && i->first == name) return i->second;
-		return false;
+
+		return bool_settings[name & index_mask].default_value;
 	}
 
 	void settings_pack::clear()

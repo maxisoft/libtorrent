@@ -1,7 +1,7 @@
 /*
 
-Copyright (c) 2016-2020, Arvid Norberg
 Copyright (c) 2016-2018, Alden Torres
+Copyright (c) 2016-2021, Arvid Norberg
 Copyright (c) 2017, Falcosc
 All rights reserved.
 
@@ -58,6 +58,20 @@ namespace libtorrent {
 			if ((m_buf[words + 1] & mask) != mask) return false;
 		}
 		return true;
+	}
+
+	bool bitfield::operator==(lt::bitfield const& rhs) const
+	{
+		if (m_buf == rhs.m_buf)
+			return true;
+
+		if (size() != rhs.size())
+			return false;
+
+		std::uint32_t const* lb = buf();
+		std::uint32_t const* rb = rhs.buf();
+
+		return std::memcmp(lb, rb, std::size_t(num_words()) * 4) == 0;
 	}
 
 	int bitfield::count() const noexcept

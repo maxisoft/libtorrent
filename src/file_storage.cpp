@@ -1,9 +1,10 @@
 /*
 
-Copyright (c) 2008-2020, Arvid Norberg
+Copyright (c) 2008-2022, Arvid Norberg
 Copyright (c) 2009, Georg Rudoy
 Copyright (c) 2016-2018, 2020, Alden Torres
 Copyright (c) 2017-2019, Steven Siloti
+Copyright (c) 2022, Konstantin Morozov
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -148,6 +149,11 @@ namespace {
 	{
 		// the number of default_block_size in a piece size, rounding up
 		return (piece_size2(index) + default_block_size - 1) / default_block_size;
+	}
+
+	int file_storage::blocks_per_piece() const
+	{
+		return (m_piece_length + default_block_size - 1) / default_block_size;
 	}
 
 	// path is supposed to include the name of the torrent itself.
@@ -790,7 +796,7 @@ namespace aux {
 	}
 
 	// this is here for backwards compatibility with hybrid torrents created
-	// with libtorrent 2.0.0-2.0.3, which would not add tail-padding
+	// with libtorrent 2.0.0-2.0.7, which would not add tail-padding
 	void file_storage::remove_tail_padding()
 	{
 		file_index_t f = end_file();
@@ -1070,6 +1076,8 @@ namespace {
 		TORRENT_ASSERT_PRECOND(m_piece_length > 0);
 		auto const& f = m_files[index];
 
+		if (f.size == 0) return 0;
+
 		// this function only works for v2 torrents, where files are guaranteed to
 		// be aligned to pieces
 		TORRENT_ASSERT(f.pad_file == false);
@@ -1088,6 +1096,8 @@ namespace {
 		TORRENT_ASSERT_PRECOND(index >= file_index_t(0) && index < end_file());
 		TORRENT_ASSERT_PRECOND(m_piece_length > 0);
 		auto const& f = m_files[index];
+
+		if (f.size == 0) return 0;
 
 		// this function only works for v2 torrents, where files are guaranteed to
 		// be aligned to pieces
@@ -1208,10 +1218,15 @@ namespace {
 
 	void file_storage::canonicalize()
 	{
+		canonicalize_impl(false);
+	}
+
+	void file_storage::canonicalize_impl(bool const backwards_compatible)
+	{
 		TORRENT_ASSERT(piece_length() >= 16 * 1024);
 
 		// use this vector to track the new ordering of files
-		// this allows the use of STL algorthims despite them
+		// this allows the use of STL algorithms despite them
 		// not supporting a custom swap functor
 		aux::vector<file_index_t, file_index_t> new_order(end_file());
 		for (auto i : file_range())
@@ -1231,7 +1246,7 @@ namespace {
 		std::sort(new_order.begin(), new_order.end()
 			, [this](file_index_t l, file_index_t r)
 		{
-			// assuming m_paths are unqiue!
+			// assuming m_paths are unique!
 			auto const& lf = m_files[l];
 			auto const& rf = m_files[r];
 			if (lf.path_index != rf.path_index)
@@ -1256,8 +1271,8 @@ namespace {
 
 		// re-compute offsets and insert pad files as necessary
 		std::int64_t off = 0;
-		for (file_index_t i : new_order)
-		{
+
+		auto add_pad_file = [&](file_index_t const i) {
 			if ((off % piece_length()) != 0 && m_files[i].size > 0)
 			{
 				auto const pad_size = piece_length() - (off % piece_length());
@@ -1279,6 +1294,12 @@ namespace {
 				if (!m_mtime.empty())
 					new_mtime.push_back(0);
 			}
+		};
+
+		for (file_index_t i : new_order)
+		{
+			if (backwards_compatible)
+				add_pad_file(i);
 
 			TORRENT_ASSERT(!m_files[i].pad_file);
 			new_files.emplace_back(std::move(m_files[i]));
@@ -1297,6 +1318,11 @@ namespace {
 			TORRENT_ASSERT(off < max_file_offset - static_cast<std::int64_t>(file.size));
 			file.offset = static_cast<std::uint64_t>(off);
 			off += file.size;
+
+			// we don't pad single-file torrents. That would make it impossible
+			// to have single-file hybrid torrents.
+			if (!backwards_compatible && num_files() > 1)
+				add_pad_file(i);
 		}
 
 		m_files = std::move(new_files);
@@ -1455,13 +1481,14 @@ namespace {
 				branch.size() < target.size();
 				branch = lsplit_path(target, branch.size() + 1).first)
 			{
+				auto branch_temp = branch.to_string();
 				// this is a concrete directory
-				if (dir_map.count(branch.to_string())) continue;
+				if (dir_map.count(branch_temp)) continue;
 
-				auto const iter = dir_links.find(branch.to_string());
+				auto const iter = dir_links.find(branch_temp);
 				if (iter == dir_links.end()) goto failed;
-				if (traversed.count(branch.to_string())) goto failed;
-				traversed.insert(branch.to_string());
+				if (traversed.count(branch_temp)) goto failed;
+				traversed.insert(std::move(branch_temp));
 
 				// this path element is a symlink. substitute the branch so far by
 				// the link target

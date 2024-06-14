@@ -1,10 +1,10 @@
 /*
 
-Copyright (c) 2014-2020, Arvid Norberg
+Copyright (c) 2014-2022, Arvid Norberg
 Copyright (c) 2015, Jakob Petsovits
 Copyright (c) 2016, Eugene Shalygin
-Copyright (c) 2017, Steven Siloti
 Copyright (c) 2017-2018, Alden Torres
+Copyright (c) 2017, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -110,20 +110,14 @@ void test_remap_files(storage_mode_t storage_mode = storage_mode_sparse)
 		std::this_thread::sleep_for(lt::milliseconds(100));
 	}
 	TEST_CHECK(st.state != torrent_status::checking_files
-		&& st.state != torrent_status::checking_files);
+		&& st.state != torrent_status::checking_resume_data);
 	TEST_CHECK(st.num_pieces == 0);
 
 	// write pieces
 	for (auto const i : fs.piece_range())
 	{
 		std::vector<char> const piece = generate_piece(i, fs.piece_size(i));
-		tor1.add_piece(i, piece.data());
-	}
-
-	// read pieces
-	for (auto const i : fs.piece_range())
-	{
-		tor1.read_piece(i);
+		tor1.add_piece(i, std::move(piece));
 	}
 
 	// wait for all alerts to come back and verify the data against the expected
@@ -170,6 +164,7 @@ void test_remap_files(storage_mode_t storage_mode = storage_mode_sparse)
 				auto const idx = pf->piece_index;
 				TEST_CHECK(passed[idx] == false);
 				passed[idx] = true;
+				tor1.read_piece(idx);
 			}
 		}
 	}
@@ -178,7 +173,7 @@ void test_remap_files(storage_mode_t storage_mode = storage_mode_sparse)
 	TEST_CHECK(all_of(files));
 	TEST_CHECK(all_of(passed));
 
-	// just because we can read them back throught libtorrent, doesn't mean the
+	// just because we can read them back through libtorrent, doesn't mean the
 	// files have hit disk yet (because of the cache). Retry a few times to try
 	// to pick up the files
 	for (auto i = 0_file; i < file_index_t(int(remap_file_sizes.size())); ++i)

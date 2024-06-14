@@ -1,8 +1,8 @@
 /*
 
-Copyright (c) 2010, 2012-2020, Arvid Norberg
-Copyright (c) 2016-2017, Steven Siloti
+Copyright (c) 2010, 2012-2021, Arvid Norberg
 Copyright (c) 2016-2018, Alden Torres
+Copyright (c) 2016-2017, Steven Siloti
 Copyright (c) 2017, Andrei Kurushin
 All rights reserved.
 
@@ -119,6 +119,7 @@ namespace aux {
 		int num_sockets() const { return int(m_utp_sockets.size()); }
 
 		void defer_ack(utp_socket_impl* s);
+		void cancel_deferred_ack(utp_socket_impl* s);
 		void subscribe_drained(utp_socket_impl* s);
 
 		void restrict_mtu(int const mtu)

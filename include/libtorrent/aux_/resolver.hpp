@@ -67,16 +67,20 @@ private:
 	void on_lookup(error_code const& ec, tcp::resolver::results_type ips
 		, std::string const& hostname);
 
-	void callback(resolver_interface::callback_t h
-		, error_code const& ec, std::vector<address> const& ips);
-
 	struct dns_cache_entry
 	{
 		time_point last_seen;
 		std::vector<address> addresses;
 	};
 
+	struct failed_dns_cache_entry
+	{
+		time_point last_seen;
+		error_code error;
+	};
+
 	std::unordered_map<std::string, dns_cache_entry> m_cache;
+	std::unordered_map<std::string, failed_dns_cache_entry> m_failed_cache;
 	io_context& m_ios;
 
 	// all lookups in this resolver are aborted on shutdown.
@@ -92,7 +96,7 @@ private:
 	time_duration m_timeout;
 
 	// the callbacks to call when a host resolution completes. This allows to
-	// attach more callbacks if the same host is looked up mutliple times
+	// attach more callbacks if the same host is looked up multiple times
 	std::multimap<std::string, resolver_interface::callback_t> m_callbacks;
 };
 

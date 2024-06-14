@@ -116,15 +116,16 @@ bool fs_supports_sparse_files()
 	TEST_CHECK(fstatfs(test, &st) == 0);
 	::close(test);
 #ifdef TORRENT_LINUX
-	static long const ufs = 0x00011954;
-	static const std::set<long> sparse_filesystems{
-		EXT4_SUPER_MAGIC, EXT3_SUPER_MAGIC, XFS_SUPER_MAGIC, BTRFS_SUPER_MAGIC
-			, ufs, REISERFS_SUPER_MAGIC
+	using fsword_t = decltype(statfs::f_type);
+	static fsword_t const ufs = 0x00011954;
+	static const std::set<fsword_t> sparse_filesystems{
+		EXT4_SUPER_MAGIC, EXT3_SUPER_MAGIC, XFS_SUPER_MAGIC, fsword_t(BTRFS_SUPER_MAGIC)
+			, ufs, REISERFS_SUPER_MAGIC, TMPFS_MAGIC
 	};
-	printf("filesystem: %ld\n", st.f_type);
+	printf("filesystem: %ld\n", long(st.f_type));
 	return sparse_filesystems.count(st.f_type);
 #else
-	printf("filesystem: (%d) %s\n", st.f_type, st.f_fstypename);
+	printf("filesystem: (%d) %s\n", int(st.f_type), st.f_fstypename);
 	static const std::set<std::string> sparse_filesystems{
 		"ufs", "zfs", "ext4", "xfs", "apfs", "btrfs"};
 	return sparse_filesystems.count(st.f_fstypename);
@@ -137,13 +138,13 @@ bool fs_supports_sparse_files()
 TORRENT_TEST(basic)
 {
 	write_file("basic-1", 10);
-	lt::error_code ec;
-	lt::copy_file("basic-1", "basic-1.copy", ec);
+	lt::storage_error ec;
+	lt::aux::copy_file("basic-1", "basic-1.copy", ec);
 	TEST_CHECK(!ec);
 	TEST_CHECK(compare_files("basic-1", "basic-1.copy"));
 
 	write_file("basic-2", 1000000);
-	lt::copy_file("basic-2", "basic-2.copy", ec);
+	lt::aux::copy_file("basic-2", "basic-2.copy", ec);
 	TEST_CHECK(!ec);
 	TEST_CHECK(compare_files("basic-2", "basic-2.copy"));
 }
@@ -153,7 +154,6 @@ TORRENT_TEST(sparse_file)
 {
 	using lt::aux::file_handle;
 	using lt::aux::file_mapping;
-	using lt::aux::file_view;
 	namespace open_mode = lt::aux::open_mode;
 
 	{
@@ -168,8 +168,7 @@ TORRENT_TEST(sparse_file)
 			, open_unmap_lock
 #endif
 			);
-		file_view view = map->view();
-		auto range = view.range();
+		auto range = map->range();
 		TEST_CHECK(range.size() == 50'000'000);
 
 		range[0] = 1;
@@ -201,8 +200,8 @@ TORRENT_TEST(sparse_file)
 		TEST_CHECK(original_size >= 50'000'000);
 	}
 
-	lt::error_code ec;
-	lt::copy_file("sparse-1", "sparse-1.copy", ec);
+	lt::storage_error ec;
+	lt::aux::copy_file("sparse-1", "sparse-1.copy", ec);
 	TEST_CHECK(!ec);
 
 	// make sure the copy is sparse

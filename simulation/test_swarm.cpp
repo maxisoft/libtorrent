@@ -478,7 +478,7 @@ struct nat_config : sim::default_config
 
 	sim::route outgoing_route(lt::address ip) override
 	{
-		// This is extremely simplistic. It will simply alter the percieved source
+		// This is extremely simplistic. It will simply alter the perceived source
 		// IP of the connecting client.
 		sim::route r;
 		if (ip == addr("50.0.0.1")) r.append(m_nat_hop);
@@ -951,7 +951,7 @@ TORRENT_TEST(pex)
 						lt::duration_cast<lt::milliseconds>(d).count());
 
 					if (i == 0) {
-					std::printf("%4d.%03d: %-25s %s\n"
+					std::printf("%4u.%03u: %-25s %s\n"
 						, millis / 1000, millis % 1000
 						, a->what()
 						, a->message().c_str());

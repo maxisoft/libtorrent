@@ -1,8 +1,8 @@
 /*
 
-Copyright (c) 2008-2020, Arvid Norberg
-Copyright (c) 2016, Pavel Pimenov
+Copyright (c) 2008-2022, Arvid Norberg
 Copyright (c) 2016-2017, 2019-2020, Alden Torres
+Copyright (c) 2016, Pavel Pimenov
 Copyright (c) 2017, Steven Siloti
 Copyright (c) 2018, Mike Tzou
 All rights reserved.
@@ -76,6 +76,8 @@ namespace libtorrent {
 	constexpr create_flags_t create_torrent::v1_only;
 	constexpr create_flags_t create_torrent::canonical_files;
 	constexpr create_flags_t create_torrent::no_attributes;
+	constexpr create_flags_t create_torrent::canonical_files_no_tail_padding;
+	constexpr create_flags_t create_torrent::allow_odd_piece_size;
 
 namespace {
 
@@ -290,8 +292,6 @@ namespace {
 		, std::function<void(piece_index_t)> const& f, error_code& ec)
 	{
 		aux::session_settings sett;
-		int const num_threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
-		sett.set_int(settings_pack::hashing_threads, num_threads);
 		set_piece_hashes(t, p, sett, f, ec);
 	}
 
@@ -447,15 +447,19 @@ namespace {
 				aux::throw_ex<system_error>(errors::invalid_piece_size);
 		}
 		else if ((piece_size % (16 * 1024)) != 0
-			&& (piece_size & (piece_size - 1)) != 0)
+			&& (piece_size & (piece_size - 1)) != 0
+			&& !(flags & allow_odd_piece_size))
 		{
 			// v1 torrents should have piece sizes divisible by 16 kiB
 			aux::throw_ex<system_error>(errors::invalid_piece_size);
 		}
 
 		fs.set_piece_length(piece_size);
-		if (!(flags & v1_only) || (flags & canonical_files))
-			fs.canonicalize();
+		if (!(flags & v1_only)
+			|| (flags & canonical_files)
+			|| (flags & canonical_files_no_tail_padding))
+			fs.canonicalize_impl(bool(flags & canonical_files_no_tail_padding));
+
 		fs.set_num_pieces(aux::calc_num_pieces(fs));
 		TORRENT_ASSERT(fs.piece_length() > 0);
 	}
@@ -602,6 +606,14 @@ namespace {
 	}
 }
 
+	std::vector<char> create_torrent::generate_buf() const
+	{
+		// TODO: this can be optimized
+		std::vector<char> ret;
+		bencode(std::back_inserter(ret), generate());
+		return ret;
+	}
+
 	entry create_torrent::generate() const
 	{
 		if (m_files.num_files() == 0 || m_files.total_size() == 0)
@@ -628,30 +640,30 @@ namespace {
 			entry::list_type& nodes_list = nodes.list();
 			for (auto const& n : m_nodes)
 			{
-				entry::list_type node;
-				node.emplace_back(n.first);
-				node.emplace_back(n.second);
-				nodes_list.emplace_back(node);
+				entry::list_type node(2);
+				node[0] = n.first;
+				node[1] = n.second;
+				nodes_list.emplace_back(std::move(node));
 			}
 		}
 
 		if (m_urls.size() > 1)
 		{
-			entry trackers(entry::list_t);
-			entry tier(entry::list_t);
+			entry::list_type trackers;
+			entry::list_type tier;
 			int current_tier = m_urls.front().second;
 			for (auto const& url : m_urls)
 			{
 				if (url.second != current_tier)
 				{
 					current_tier = url.second;
-					trackers.list().push_back(tier);
-					tier.list().clear();
+					trackers.emplace_back(std::move(tier));
+					tier.clear();
 				}
-				tier.list().emplace_back(url.first);
+				tier.emplace_back(url.first);
 			}
-			trackers.list().push_back(tier);
-			dict["announce-list"] = trackers;
+			trackers.emplace_back(std::move(tier));
+			dict["announce-list"] = std::move(trackers);
 		}
 
 		if (!m_comment.empty())

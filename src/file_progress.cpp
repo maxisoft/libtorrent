@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015-2017, 2019-2020, Arvid Norberg
+Copyright (c) 2015-2017, 2019-2021, Arvid Norberg
 Copyright (c) 2016-2017, 2019, Alden Torres
 All rights reserved.
 
@@ -193,6 +193,13 @@ namespace libtorrent { namespace aux {
 			TORRENT_ASSERT(m_total_on_disk == 0);
 			return;
 		}
+
+#ifndef TORRENT_EXPENSIVE_INVARIANT_CHECKS
+		// if we have many files, this would be an expensive
+		// invariant check, so don't run it unless we
+		// enabled expensive invariant checks
+		if (m_file_progress.size() > 900) return;
+#endif
 
 		file_index_t index(0);
 		std::int64_t total_on_disk = 0;

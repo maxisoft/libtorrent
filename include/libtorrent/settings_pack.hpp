@@ -1,11 +1,12 @@
 /*
 
-Copyright (c) 2014-2020, Arvid Norberg
+Copyright (c) 2014-2022, Arvid Norberg
 Copyright (c) 2016-2018, Alden Torres
-Copyright (c) 2017, Steven Siloti
 Copyright (c) 2017, Andrei Kurushin
+Copyright (c) 2017, Steven Siloti
 Copyright (c) 2018, TheOriginalWinCat
 Copyright (c) 2019, Amir Abrams
+Copyright (c) 2022, Kevin Bracey
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -126,6 +127,11 @@ namespace aux {
 	// ``set_int()``, ``set_bool()`` functions, to specify the setting to
 	// change.
 	//
+	// The ``settings_pack`` only stores values for settings that have been
+	// explicitly set on this object. However, it can still be queried for
+	// settings that have not been set and returns the default value for those
+	// settings.
+	//
 	// .. include:: settings-ref.rst
 	//
 	struct TORRENT_EXPORT settings_pack final : settings_interface
@@ -165,7 +171,8 @@ namespace aux {
 		// queries the current configuration option from the settings_pack.
 		// ``name`` is one of the enumeration values from string_types, int_types
 		// or bool_types. The enum value must match the type of the get_*
-		// function.
+		// function. If the specified setting field has not been set, the default
+		// value is returned.
 		std::string const& get_str(int name) const override;
 		int get_int(int name) const override;
 		bool get_bool(int name) const override;
@@ -356,7 +363,10 @@ namespace aux {
 			proxy_password,
 
 			// sets the i2p_ SAM bridge to connect to. set the port with the
-			// ``i2p_port`` setting.
+			// ``i2p_port`` setting. Unless this is set, i2p torrents are not
+			// supported. This setting is separate from the other proxy settings
+			// since i2p torrents and their peers are orthogonal. You can have
+			// i2p peers as well as regular peers via a proxy.
 			//
 			// .. _i2p: http://www.i2p2.de
 			i2p_hostname,
@@ -1294,12 +1304,17 @@ namespace aux {
 			outgoing_port,
 			num_outgoing_ports,
 
-			// ``peer_tos`` determines the TOS byte set in the IP header of every
+			// ``peer_dscp`` determines the DSCP field in the IP header of every
 			// packet sent to peers (including web seeds). ``0x0`` means no marking,
 			// ``0x04`` represents Lower Effort. For more details see `RFC 8622`_.
 			//
 			// .. _`RFC 8622`: http://www.faqs.org/rfcs/rfc8622.html
-			peer_tos,
+			//
+			// ``peer_tos`` is the backwards compatible name for this setting.
+			peer_dscp,
+
+			// hidden
+			peer_tos = peer_dscp,
 
 			// for auto managed torrents, these are the limits they are subject
 			// to. If there are too many torrents some of the auto managed ones
@@ -1423,6 +1438,11 @@ namespace aux {
 			// default (i.e. don't change the buffer sizes).
 			// The socket buffer sizes are changed using setsockopt() with
 			// SOL_SOCKET/SO_RCVBUF and SO_SNDBUFFER.
+			//
+			// Note that uTP peers share a single UDP socket buffer for each of the
+			// ``listen_interfaces``, along with DHT and UDP tracker traffic.
+			// If the buffer size is too small for the combined traffic through the
+			// socket, packets may be dropped.
 			recv_socket_buffer_size,
 			send_socket_buffer_size,
 
@@ -1716,9 +1736,13 @@ namespace aux {
 			// ``hashing_threads`` is the number of disk I/O threads to use for
 			// piece hash verification. These threads are *in addition* to the
 			// regular disk I/O threads specified by settings_pack::aio_threads.
+			// These threads are only used for full checking of torrents. The
+			// hash checking done while downloading are done by the regular disk
+			// I/O threads.
 			// The hasher threads do not only compute hashes, but also perform
 			// the read from disk. On storage optimal for sequential access,
-			// such as hard drives, this setting should probably be set to 1.
+			// such as hard drives, this setting should be set to 1, which is
+			// also the default.
 			hashing_threads,
 
 			// the number of blocks to keep outstanding at any given time when
@@ -2018,6 +2042,32 @@ namespace aux {
 			// torrents, this limit may have to be raised.
 			metadata_token_limit,
 
+			// controls whether disk writes will be made through a memory mapped
+			// file or via normal write calls. This only affects the
+			// mmap_disk_io. When saving to a non-local drive (network share,
+			// NFS or NAS) using memory mapped files is most likely inferior.
+			// When writing to a local SSD (especially in DAX mode) using memory
+			// mapped files likely gives the best performance.
+			// The values for this setting are specified as mmap_write_mode_t.
+			disk_write_mode,
+
+			// when using mmap_disk_io, files smaller than this number of blocks
+			// will not be memory mapped, but will use normal pread/pwrite
+			// operations. This file size limit is specified in 16 kiB blocks.
+			mmap_file_size_cutoff,
+
+			// Configures the SAM session
+			// quantity of I2P inbound and outbound tunnels [1..16].
+			// number of hops for I2P inbound and outbound tunnels [0..7]
+			// Changing these will not trigger a reconnect to the SAM bridge,
+			// they will take effect the next time the SAM connection is
+			// re-established (by restarting or changing i2p_hostname or
+			// i2p_port).
+			i2p_inbound_quantity,
+			i2p_outbound_quantity,
+			i2p_inbound_length,
+			i2p_outbound_length,
+
 			max_int_setting_internal
 		};
 
@@ -2025,6 +2075,20 @@ namespace aux {
 		constexpr static int num_string_settings = int(max_string_setting_internal) - int(string_type_base);
 		constexpr static int num_bool_settings = int(max_bool_setting_internal) - int(bool_type_base);
 		constexpr static int num_int_settings = int(max_int_setting_internal) - int(int_type_base);
+
+		enum mmap_write_mode_t : std::uint8_t
+		{
+			// disable writing to disk via mmap, always use normal write calls
+			always_pwrite = 0,
+
+			// prefer using memory mapped files for disk writes (at least for
+			// large files where it might make sense)
+			always_mmap_write,
+
+			// determine whether to use pwrite or memory mapped files for disk
+			// writes depending on the kind of storage behind the save path
+			auto_mmap_write,
+		};
 
 		enum suggest_mode_t : std::uint8_t { no_piece_suggestions = 0, suggest_read_cache = 1 };
 
@@ -2162,8 +2226,13 @@ namespace aux {
 			// authorization. The username and password will be sent to the proxy.
 			http_pw,
 
-			// route through a i2p SAM proxy
+#if TORRENT_USE_I2P
+			// internal
+			// This is used internally to communicate with the
+			// http_tracker_connection. To configure an i2p SAM bridge, set
+			// i2p_hostname and i2p_port.
 			i2p_proxy
+#endif
 		};
 	private:
 

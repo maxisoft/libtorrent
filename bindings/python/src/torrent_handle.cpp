@@ -413,6 +413,7 @@ std::shared_ptr<const torrent_info> get_torrent_info(torrent_handle const& h)
 
 #endif // TORRENT_ABI_VERSION
 
+// TODO: this overload should probably be deprecated
 void add_piece_str(torrent_handle& th, piece_index_t piece, char const *data
     , add_piece_flags_t const flags)
 {
@@ -422,7 +423,10 @@ void add_piece_str(torrent_handle& th, piece_index_t piece, char const *data
 void add_piece_bytes(torrent_handle& th, piece_index_t piece, bytes data
     , add_piece_flags_t const flags)
 {
-    th.add_piece(piece, data.arr.c_str(), flags);
+    std::vector<char> buffer;
+    buffer.reserve(data.arr.size());
+    std::copy(data.arr.begin(), data.arr.end(), std::back_inserter(buffer));
+    th.add_piece(piece, std::move(buffer), flags);
 }
 
 class dummy5 {};
@@ -453,6 +457,9 @@ void bind_torrent_handle()
     void (torrent_handle::*move_storage0)(std::string const&, lt::move_flags_t) const = &torrent_handle::move_storage;
     void (torrent_handle::*rename_file0)(file_index_t, std::string const&) const = &torrent_handle::rename_file;
 
+    bool (torrent_handle::*need_save_resume_data0)() const = &torrent_handle::need_save_resume_data;
+    bool (torrent_handle::*need_save_resume_data1)(resume_data_flags_t) const = &torrent_handle::need_save_resume_data;
+
     std::vector<open_file_state> (torrent_handle::*file_status0)() const = &torrent_handle::file_status;
 
 #define _ allow_threads
@@ -461,6 +468,8 @@ void bind_torrent_handle()
         .value("always_replace_files", move_flags_t::always_replace_files)
         .value("fail_if_exist", move_flags_t::fail_if_exist)
         .value("dont_replace", move_flags_t::dont_replace)
+        .value("reset_save_path", move_flags_t::reset_save_path)
+        .value("reset_save_path_unchecked", move_flags_t::reset_save_path_unchecked)
     ;
 
 #if TORRENT_ABI_VERSION == 1
@@ -478,10 +487,15 @@ void bind_torrent_handle()
         .def(self < self)
         .def("__hash__", (std::size_t (*)(torrent_handle const&))&libtorrent::hash_value)
         .def("get_peer_info", get_peer_info)
+        .def("post_peer_info", &torrent_handle::post_peer_info)
         .def("status", _(&torrent_handle::status), arg("flags") = 0xffffffff)
+        .def("post_status", &torrent_handle::post_status, arg("flags") = 0xffffffff)
         .def("get_download_queue", get_download_queue)
+        .def("post_download_queue", &torrent_handle::post_download_queue)
         .def("file_progress", file_progress, arg("flags") = file_progress_flags_t{})
+        .def("post_file_progress", &torrent_handle::post_file_progress, arg("flags") = file_progress_flags_t{})
         .def("trackers", trackers)
+        .def("post_trackers", &torrent_handle::post_trackers)
         .def("replace_trackers", replace_trackers)
         .def("add_tracker", add_tracker)
         .def("add_url_seed", _(&torrent_handle::add_url_seed))
@@ -511,6 +525,7 @@ void bind_torrent_handle()
         .def("reset_piece_deadline", _(&torrent_handle::reset_piece_deadline), (arg("index")))
         .def("clear_piece_deadlines", _(&torrent_handle::clear_piece_deadlines), (arg("index")))
         .def("piece_availability", &piece_availability)
+        .def("post_piece_availability", &torrent_handle::post_piece_availability)
         .def("piece_priority", _(piece_priority0))
         .def("piece_priority", _(piece_priority1))
         .def("prioritize_pieces", &prioritize_pieces)
@@ -521,7 +536,8 @@ void bind_torrent_handle()
         .def("file_priority", &file_prioritity1)
         .def("file_status", _(file_status0))
         .def("save_resume_data", _(&torrent_handle::save_resume_data), arg("flags") = 0)
-        .def("need_save_resume_data", _(&torrent_handle::need_save_resume_data))
+        .def("need_save_resume_data", _(need_save_resume_data0))
+        .def("need_save_resume_data", _(need_save_resume_data1), arg("flags"))
         .def("force_reannounce", _(force_reannounce0)
             , (arg("seconds") = 0, arg("tracker_idx") = -1, arg("flags") = reannounce_flags_t{}))
 #ifndef TORRENT_DISABLE_DHT
@@ -543,6 +559,7 @@ void bind_torrent_handle()
         .def("info_hashes", _(&torrent_handle::info_hashes))
         .def("force_recheck", _(&torrent_handle::force_recheck))
         .def("rename_file", _(rename_file0))
+        .def("set_ssl_certificate_buffer", &torrent_handle::set_ssl_certificate_buffer, (arg("cert"), arg("private_key"), arg("dh_params")))
         .def("set_ssl_certificate", &torrent_handle::set_ssl_certificate, (arg("cert"), arg("private_key"), arg("dh_params"), arg("passphrase")=""))
         .def("flags", _(&torrent_handle::flags))
         .def("set_flags", _(set_flags0))
@@ -611,6 +628,7 @@ void bind_torrent_handle()
 #if TORRENT_ABI_VERSION == 1
     s.attr("locked") = 0;
 #endif
+    s.attr("mmapped") = file_open_mode::mmapped;
     }
 
     {

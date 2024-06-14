@@ -1,7 +1,7 @@
 /*
 
-Copyright (c) 2016-2018, 2020, Arvid Norberg
 Copyright (c) 2016, Alden Torres
+Copyright (c) 2016-2018, 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@ namespace libtorrent { namespace aux {
 
 	// reads an integer from a byte stream
 	// in big endian byte order and converts
-	// it to native endianess
+	// it to native endianness
 	template <class T, class Byte>
 	inline typename std::enable_if<sizeof(Byte)==1, T>::type
 	read_impl(span<Byte>& view, type<T>)

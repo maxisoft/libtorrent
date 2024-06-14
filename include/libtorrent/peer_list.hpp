@@ -143,7 +143,7 @@ namespace libtorrent {
 		void apply_ip_filter(ip_filter const& filter, torrent_state* state
 			, std::vector<address>& banned);
 		void apply_port_filter(port_filter const& filter, torrent_state* state
-			, std::vector<address>& banned);
+			, std::vector<tcp::endpoint>& banned);
 
 		void set_seed(torrent_peer* p, bool s);
 
@@ -159,6 +159,7 @@ namespace libtorrent {
 #endif
 
 		int num_peers() const { return int(m_peers.size()); }
+		int num_candidate_cache() const { return int(m_candidate_cache.size()); }
 
 		using peers_t = aux::deque<torrent_peer*>;
 		using iterator = peers_t::iterator;

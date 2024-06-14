@@ -1,8 +1,8 @@
 /*
 
 Copyright (c) 2003, Daniel Wallin
-Copyright (c) 2016-2020, Arvid Norberg
 Copyright (c) 2017, 2020, Alden Torres
+Copyright (c) 2016-2020, 2022, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -97,6 +97,7 @@ namespace aux {
 						// put the fence job back in the blocked queue
 						m_blocked_jobs.push_front(bj);
 					}
+					TORRENT_ASSERT(m_has_fence > 0 || m_blocked_jobs.size() == 0);
 					return ret;
 				}
 				TORRENT_ASSERT(!(bj->flags & mmap_disk_job::in_progress));

@@ -2,7 +2,8 @@
 
 Copyright (c) 2018, BitTorrent Inc.
 Copyright (c) 2018, Steven Siloti
-Copyright (c) 2019-2020, Arvid Norberg
+Copyright (c) 2019-2022, Arvid Norberg
+Copyright (c) 2020, Mike Tzou
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -126,7 +127,7 @@ namespace {
 		// calls the function object ``f`` for each hash that is available.
 		// starting with v1. The signature of ``F`` is::
 		//
-		//	void(sha1_hash, protocol_version);
+		//	void(sha1_hash const&, protocol_version);
 		template <typename F> void for_each(F f) const
 		{
 			if (has_v1()) f(v1, protocol_version::V1);

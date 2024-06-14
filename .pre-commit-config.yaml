@@ -15,7 +15,7 @@ default_language_version:
     python: python3
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v3.4.0
+    rev: v4.5.0
     hooks:
     #-   id: trailing-whitespace
     #-   id: end-of-file-fixer
@@ -32,17 +32,17 @@ repos:
     -   id: check-symlinks
     -   id: check-toml
 - repo: https://github.com/pappasam/toml-sort
-  rev: v0.19.0
+  rev: v0.23.1
   hooks:
   - id: toml-sort
     args: [--all, --in-place]
 - repo: https://github.com/pre-commit/pygrep-hooks
-  rev: v1.7.0
+  rev: v1.10.0
   hooks:
   - id: rst-directive-colons
   - id: rst-inline-touching-normal
 - repo: https://github.com/PyCQA/isort
-  rev: 5.7.0
+  rev: 5.13.2
   hooks:
     - id: isort
       exclude: |
@@ -51,7 +51,6 @@ repos:
             bindings/python/client.py|
             bindings/python/dummy_data.py|
             bindings/python/make_torrent.py|
-            bindings/python/setup.py|
             bindings/python/simple_client.py|
             bindings/python/test.py|
             docs/gen_reference_doc.py|
@@ -70,26 +69,24 @@ repos:
             tools/parse_session_stats.py|
             tools/parse_utp_log.py|
             tools/run_benchmark.py|
-            tools/set_version.py|
             tools/update_copyright.py
           )$
-- repo: https://github.com/myint/autoflake
-  rev: v1.4
+- repo: https://github.com/PyCQA/autoflake
+  rev: v2.2.1
   hooks:
     - id: autoflake
       args: [--in-place, --remove-unused-variables, --remove-all-unused-imports, --remove-duplicate-keys]
       # Avoiding PR bloat
       exclude: |
           (?x)^(
-               bindings/python/setup.py|
                bindings/python/test.py|
                tools/benchmark_checking.py|
                tools/copyright.py|
                tools/gen_convenience_header.py|
                tools/libtorrent_lldb.py
           )
-- repo: https://github.com/python/black
-  rev: 20.8b1
+- repo: https://github.com/psf/black
+  rev: 24.2.0
   hooks:
     - id: black
       # Avoiding PR bloat
@@ -98,7 +95,6 @@ repos:
                bindings/python/client.py|
                bindings/python/dummy_data.py|
                bindings/python/make_torrent.py|
-               bindings/python/setup.py|
                bindings/python/simple_client.py|
                bindings/python/test.py|
                docs/filter-rst.py|
@@ -109,7 +105,6 @@ repos:
                examples/run_benchmarks.py|
                fuzzers/tools/generate_initial_corpus.py|
                fuzzers/tools/unify_corpus_names.py|
-               setup.py|
                test/http_proxy.py|
                test/socks.py|
                test/web_server.py|
@@ -137,7 +132,7 @@ repos:
       name: black (pyi)
       types: [pyi]
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v0.800
+  rev: v1.8.0
   hooks:
     - id: mypy
       # Avoiding PR bloat
@@ -146,7 +141,6 @@ repos:
               bindings/python/client.py|
               bindings/python/dummy_data.py|
               bindings/python/make_torrent.py|
-              bindings/python/setup.py|
               bindings/python/test.py|
               docs/filter-rst.py|
               docs/gen_reference_doc.py|
@@ -174,11 +168,10 @@ repos:
               tools/parse_session_stats.py|
               tools/parse_utp_log.py|
               tools/run_benchmark.py|
-              tools/set_version.py|
               tools/update_copyright.py
           )$
-- repo: https://gitlab.com/pycqa/flake8.git
-  rev: 3.8.4
+- repo: https://github.com/PyCQA/flake8
+  rev: 7.0.0
   hooks:
   - id: flake8
     exclude: |
@@ -186,7 +179,6 @@ repos:
             # Enable these later, avoid bloating this PR
             bindings/python/client.py|
             bindings/python/make_torrent.py|
-            bindings/python/setup.py|
             bindings/python/test.py|
             docs/gen_settings_doc.py|
             docs/gen_todo.py|
@@ -210,7 +202,6 @@ repos:
             tools/parse_session_stats.py|
             tools/parse_utp_log.py|
             tools/run_benchmark.py|
-            tools/set_version.py|
             tools/update_copyright.py
         )$
 #- repo: local

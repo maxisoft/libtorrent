@@ -1,7 +1,7 @@
 /*
 
-Copyright (c) 2010, 2013-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2016, 2020, Alden Torres
+Copyright (c) 2010, 2013-2017, 2020, 2022, Arvid Norberg
+Copyright (c) 2020, Alden Torres
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -67,7 +67,7 @@ namespace aux {
 		int m_write_jobs;
 
 		std::mutex m_job_mutex;
-		aux::pool m_job_pool;
+		aux::object_pool<mmap_disk_job> m_job_pool;
 	};
 }
 }

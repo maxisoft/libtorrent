@@ -1,8 +1,8 @@
 /*
 
 Copyright (c) 2014-2018, Steven Siloti
-Copyright (c) 2015-2020, Arvid Norberg
 Copyright (c) 2015-2018, Alden Torres
+Copyright (c) 2015-2022, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -45,6 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #if TORRENT_ABI_VERSION == 1
 #include "libtorrent/read_resume_data.hpp"
+#include "libtorrent/magnet_uri.hpp"
 #endif
 
 using libtorrent::aux::session_impl;
@@ -386,6 +387,14 @@ namespace {
 		{
 			if (atp.file_priorities.empty())
 				atp.file_priorities = resume_data.file_priorities;
+		}
+
+		if (atp.info_hash.is_all_zeros()
+			&& string_begins_no_case("magnet:", atp.url.c_str()))
+		{
+			error_code err;
+			parse_magnet_uri(atp.url, atp, err);
+			if (!err) atp.url.clear();
 		}
 	}
 

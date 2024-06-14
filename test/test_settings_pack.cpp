@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2010, 2014-2020, Arvid Norberg
+Copyright (c) 2010, 2014-2020, 2022, Arvid Norberg
 Copyright (c) 2016-2017, Alden Torres
 All rights reserved.
 
@@ -136,6 +136,9 @@ TORRENT_TEST(test_name)
 	TEST_NAME(predictive_piece_announce);
 	TEST_NAME(max_metadata_size);
 	TEST_NAME(num_optimistic_unchoke_slots);
+
+	TEST_EQUAL(name_for_setting(settings_pack::peer_tos), std::string("peer_dscp"));
+	TEST_EQUAL(setting_by_name("peer_tos"), settings_pack::peer_dscp); \
 }
 
 TORRENT_TEST(clear)
@@ -164,19 +167,21 @@ TORRENT_TEST(clear_single_int)
 
 	sp.clear(settings_pack::max_out_request_queue);
 
-	TEST_EQUAL(sp.get_int(settings_pack::max_out_request_queue), 0);
+	// when cleared, we'll get the default value
+	TEST_EQUAL(sp.get_int(settings_pack::max_out_request_queue), 500);
 }
 
 TORRENT_TEST(clear_single_bool)
 {
 	settings_pack sp;
-	sp.set_bool(settings_pack::send_redundant_have, true);
+	sp.set_bool(settings_pack::send_redundant_have, false);
 
-	TEST_EQUAL(sp.get_bool(settings_pack::send_redundant_have), true);
+	TEST_EQUAL(sp.get_bool(settings_pack::send_redundant_have), false);
 
 	sp.clear(settings_pack::send_redundant_have);
 
-	TEST_EQUAL(sp.get_bool(settings_pack::send_redundant_have), false);
+	// when cleared, we'll get the default value
+	TEST_EQUAL(sp.get_bool(settings_pack::send_redundant_have), true);
 }
 
 TORRENT_TEST(clear_single_string)
@@ -188,7 +193,8 @@ TORRENT_TEST(clear_single_string)
 
 	sp.clear(settings_pack::user_agent);
 
-	TEST_EQUAL(sp.get_str(settings_pack::user_agent), std::string());
+	// when cleared, we'll get the default value
+	TEST_EQUAL(sp.get_str(settings_pack::user_agent), "libtorrent/2.0.11.0");
 }
 
 TORRENT_TEST(duplicates)

@@ -1,11 +1,12 @@
 /*
 
-Copyright (c) 2003-2020, Arvid Norberg
+Copyright (c) 2003-2021, Arvid Norberg
 Copyright (c) 2004, Magnus Jonsson
 Copyright (c) 2016-2018, Alden Torres
-Copyright (c) 2016, 2019, Steven Siloti
 Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2016, 2019, Steven Siloti
 Copyright (c) 2018, Pavel Pimenov
+Copyright (c) 2021, Denis Kuzmenok
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -194,7 +195,7 @@ namespace libtorrent {
 		m_num_have_filtered = 0;
 		m_num_have = 0;
 		m_have_pad_bytes = 0;
-		m_filtered_pad_bytes = 0;
+		m_filtered_pad_bytes += m_have_filtered_pad_bytes;
 		m_have_filtered_pad_bytes = 0;
 		m_num_passed = 0;
 		m_dirty = true;
@@ -3112,7 +3113,7 @@ get_out:
 	void piece_picker::record_downloading_piece(piece_index_t const p)
 	{
 		// if a single piece is large enough, don't bother with the affinity of
-		// adjecent pieces.
+		// adjacent pieces.
 		if (blocks_per_piece() >= max_piece_affinity_extent) return;
 
 		piece_extent_t const this_extent = extent_for(p);
@@ -3136,7 +3137,7 @@ get_out:
 
 			// if at least one piece in this extent has a different priority than
 			// the one we just started downloading, don't create an affinity for
-			// adjecent pieces. This probably means the pieces belong to different
+			// adjacent pieces. This probably means the pieces belong to different
 			// files, or that some other mechanism determining the priority should
 			// take precedence.
 			if (piece_priority(piece) != this_prio) return;
@@ -3152,7 +3153,7 @@ get_out:
 
 		// limit the number of extent affinities active at any given time to limit
 		// the cost of checking them. Also, don't replace them, commit to
-		// finishing them before starting another extent. This is analoguous to
+		// finishing them before starting another extent. This is analogous to
 		// limiting the number of partial pieces.
 	}
 
@@ -3190,12 +3191,12 @@ get_out:
 			if (prio >= 0 && !m_dirty) update(prio, p.index);
 
 			// if the piece extent affinity is enabled, (maybe) record downloading a
-			// block from this piece to make other peers prefer adjecent pieces
+			// block from this piece to make other peers prefer adjacent pieces
 			// if reverse is set, don't encourage other peers to pick nearby
 			// pieces, as that's assumed to be low priority.
 			// if time critical mode is enabled, we're likely to either download
 			// adjacent pieces anyway, but more importantly, we don't want to
-			// create artificially higher priority for adjecent pieces if they
+			// create artificially higher priority for adjacent pieces if they
 			// aren't important or urgent
 			if (options & piece_extent_affinity)
 				record_downloading_piece(block.piece_index);

@@ -1,14 +1,14 @@
 /*
 
 Copyright (c) 2019, Amir Abrams
-Copyright (c) 2003-2020, Arvid Norberg
+Copyright (c) 2003-2022, Arvid Norberg
 Copyright (c) 2004, Magnus Jonsson
 Copyright (c) 2015, 2018, Steven Siloti
 Copyright (c) 2016-2017, Alden Torres
-Copyright (c) 2017, Falcosc
 Copyright (c) 2017, 2020, AllSeeingEyeTolledEweSew
-Copyright (c) 2019, ghbplayer
+Copyright (c) 2017, Falcosc
 Copyright (c) 2019, Andrei Kurushin
+Copyright (c) 2019, ghbplayer
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -182,6 +182,8 @@ namespace aux {
 		// .. warning:: This is a pointer that points to an array
 		//	that's owned by the session object. The next time
 		//	get_download_queue() is called, it will be invalidated.
+		//	In the case of piece_info_alert, these pointers point into the alert
+		//	object itself, and will be invalidated when the alert destruct.
 		block_info const* blocks;
 
 #if TORRENT_ABI_VERSION == 1
@@ -239,7 +241,7 @@ namespace aux {
 		friend struct aux::session_impl;
 		friend struct session_handle;
 		friend struct torrent;
-		friend TORRENT_EXPORT std::size_t hash_value(torrent_handle const& th);
+		TORRENT_EXPORT friend std::size_t hash_value(torrent_handle const& th);
 
 		// constructs a torrent handle that does not refer to a torrent.
 		// i.e. is_valid() will return false.
@@ -268,10 +270,7 @@ namespace aux {
 		static constexpr add_piece_flags_t overwrite_existing = 0_bit;
 
 		// This function will write ``data`` to the storage as piece ``piece``,
-		// as if it had been downloaded from a peer. ``data`` is expected to
-		// point to a buffer of as many bytes as the size of the specified piece.
-		// The data in the buffer is copied and passed on to the disk IO thread
-		// to be written at a later point.
+		// as if it had been downloaded from a peer.
 		//
 		// By default, data that's already been downloaded is not overwritten by
 		// this buffer. If you trust this data to be correct (and pass the piece
@@ -285,7 +284,20 @@ namespace aux {
 		//
 		// Adding pieces while the torrent is being checked (i.e. in
 		// torrent_status::checking_files state) is not supported.
+		//
+		// The overload taking a raw pointer to the data is a blocking call. It
+		// won't return until the libtorrent thread has copied the data into its
+		// disk write buffer. ``data`` is expected to point to a buffer of as
+		// many bytes as the size of the specified piece. See
+		// file_storage::piece_size().
+		//
+		// The data in the buffer is copied and passed on to the disk IO thread
+		// to be written at a later point.
+		//
+		// The overload taking a ``std::vector<char>`` is not blocking, it will
+		// send the buffer to the main thread and return immediately.
 		void add_piece(piece_index_t piece, char const* data, add_piece_flags_t flags = {}) const;
+		void add_piece(piece_index_t piece, std::vector<char> data, add_piece_flags_t flags = {}) const;
 
 		// This function starts an asynchronous read operation of the specified
 		// piece from this torrent. You must have completed the download of the
@@ -309,11 +321,19 @@ namespace aux {
 		void get_full_peer_list(std::vector<peer_list_entry>& v) const;
 #endif
 
-		// takes a reference to a vector that will be cleared and filled with one
-		// entry for each peer connected to this torrent, given the handle is
-		// valid. If the torrent_handle is invalid, it will throw
-		// system_error exception. Each entry in the vector contains
-		// information about that particular peer. See peer_info.
+		// Query information about connected peers for this torrent. If the
+		// torrent_handle is invalid, it will throw a system_error exception.
+		//
+		// ``post_peer_info()`` is asynchronous and will trigger the posting of
+		// a peer_info_alert. The alert contain a list of peer_info objects, one
+		// for each connected peer.
+		//
+		// ``get_peer_info()`` is synchronous and takes a reference to a vector
+		// that will be cleared and filled with one entry for each peer
+		// connected to this torrent, given the handle is valid. Each entry in
+		// the vector contains information about that particular peer. See
+		// peer_info.
+		void post_peer_info() const;
 		void get_peer_info(std::vector<peer_info>& v) const;
 
 		// calculates ``distributed_copies``, ``distributed_full_copies`` and
@@ -351,14 +371,27 @@ namespace aux {
 		// you're not interested in it (and see performance issues), you can
 		// filter them out.
 		//
+		// The ``status()`` function will block until the internal libtorrent
+		// thread responds with the torrent_status object. To avoid blocking,
+		// instead call ``post_status()``. It will trigger posting of a
+		// state_update_alert with a single torrent_status object for this
+		// torrent.
+		//
+		// In order to get regular updates for torrents whose status changes,
+		// consider calling session::post_torrent_updates()`` instead.
+		//
 		// By default everything is included. The flags you can use to decide
 		// what to *include* are defined in this class.
 		torrent_status status(status_flags_t flags = status_flags_t::all()) const;
+		void post_status(status_flags_t flags = status_flags_t::all()) const;
 
-		// ``get_download_queue()`` returns a vector with information about pieces
-		// that are partially downloaded or not downloaded but partially
-		// requested. See partial_piece_info for the fields in the returned
-		// vector.
+		// ``post_download_queue()`` triggers a download_queue_alert to be
+		// posted.
+		// ``get_download_queue()`` is a synchronous call and returns a vector
+		// with information about pieces that are partially downloaded or not
+		// downloaded but partially requested. See partial_piece_info for the
+		// fields in the returned vector.
+		void post_download_queue() const;
 		std::vector<partial_piece_info> get_download_queue() const;
 		void get_download_queue(std::vector<partial_piece_info>& queue) const;
 
@@ -458,6 +491,7 @@ namespace aux {
 		// already keeps track of this internally and no calculation is required.
 		void file_progress(std::vector<std::int64_t>& progress, file_progress_flags_t flags = {}) const;
 		std::vector<std::int64_t> file_progress(file_progress_flags_t flags = {}) const;
+		void post_file_progress(file_progress_flags_t flags) const;
 
 		// This function returns a vector with status about files
 		// that are open for this torrent. Any file that is not open
@@ -472,7 +506,7 @@ namespace aux {
 		// non-empty), this will clear the error and start the torrent again.
 		void clear_error() const;
 
-		// ``trackers()`` will return the list of trackers for this torrent. The
+		// ``trackers()`` returns the list of trackers for this torrent. The
 		// announce entry contains both a string ``url`` which specify the
 		// announce url for the tracker as well as an int ``tier``, which is
 		// specifies the order in which this tracker is tried. If you want
@@ -481,6 +515,9 @@ namespace aux {
 		// one returned from ``trackers()`` and will replace it. If you want an
 		// immediate effect, you have to call force_reannounce(). See
 		// announce_entry.
+		//
+		// ``post_trackers()`` is the asynchronous version of ``trackers()``. It
+		// will trigger a tracker_list_alert to be posted.
 		//
 		// ``add_tracker()`` will look if the specified tracker is already in the
 		// set. If it is, it doesn't do anything. If it's not in the current set
@@ -493,6 +530,7 @@ namespace aux {
 		std::vector<announce_entry> trackers() const;
 		void replace_trackers(std::vector<announce_entry> const&) const;
 		void add_tracker(announce_entry const&) const;
+		void post_trackers() const;
 
 		// TODO: 3 unify url_seed and http_seed with just web_seed, using the
 		// web_seed_entry.
@@ -568,7 +606,9 @@ namespace aux {
 		// disconnected. This is a graceful shut down of the torrent in the sense
 		// that no downloaded bytes are wasted.
 		static constexpr pause_flags_t graceful_pause = 0_bit;
-		static constexpr pause_flags_t clear_disk_cache = 1_bit;
+
+		// hidden
+		TORRENT_DEPRECATED static constexpr pause_flags_t clear_disk_cache = 1_bit;
 
 		// ``pause()``, and ``resume()`` will disconnect all peers and reconnect
 		// all peers respectively. When a torrent is paused, it will however
@@ -636,66 +676,93 @@ namespace aux {
 		static constexpr resume_data_flags_t flush_disk_cache = 0_bit;
 
 		// the resume data will contain the metadata from the torrent file as
-		// well. This is default for any torrent that's added without a
-		// torrent file (such as a magnet link or a URL).
+		// well. This is useful for clients that don't keep .torrent files
+		// around separately, or for torrents that were added via a magnet link.
 		static constexpr resume_data_flags_t save_info_dict = 1_bit;
 
-		// if nothing significant has changed in the torrent since the last
-		// time resume data was saved, fail this attempt. Significant changes
-		// primarily include more data having been downloaded, file or piece
-		// priorities having changed etc. If the resume data doesn't need
-		// saving, a save_resume_data_failed_alert is posted with the error
-		// resume_data_not_modified.
+		// this flag has the same behavior as the combination of:
+		// if_counters_changed | if_download_progress | if_config_changed |
+		// if_state_changed | if_metadata_changed
 		static constexpr resume_data_flags_t only_if_modified = 2_bit;
 
+		// save resume data if any counters has changed since the last time
+		// resume data was saved. This includes upload/download counters, active
+		// time counters and scrape data. A torrent that is not paused will have
+		// its active time counters incremented continuously.
+		static constexpr resume_data_flags_t if_counters_changed = 3_bit;
+
+		// save the resume data if any blocks have been downloaded since the
+		// last time resume data was saved. This includes:
+		// * checking existing files on disk
+		// * downloading a block from a peer
+		static constexpr resume_data_flags_t if_download_progress = 4_bit;
+
+		// save the resume data if configuration options changed since last time
+		// the resume data was saved. This includes:
+		// * file- or piece priorities
+		// * upload- and download rate limits
+		// * change max-uploads (unchoke slots)
+		// * change max connection limit
+		// * enable/disable peer-exchange, local service discovery or DHT
+		// * enable/disable apply IP-filter
+		// * enable/disable auto-managed
+		// * enable/disable share-mode
+		// * enable/disable sequential-mode
+		// * files renamed
+		// * storage moved (save_path changed)
+		static constexpr resume_data_flags_t if_config_changed = 5_bit;
+
+		// save the resume data if torrent state has changed since last time the
+		// resume data was saved. This includes:
+		// * upload mode
+		// * paused state
+		// * super-seeding
+		// * seed-mode
+		static constexpr resume_data_flags_t if_state_changed = 6_bit;
+
+		// save the resume data if any *metadata* changed since the last time
+		// resume data was saved. This includes:
+		// * add/remove web seeds
+		// * add/remove trackers
+		// * receiving metadata for a magnet link
+		static constexpr resume_data_flags_t if_metadata_changed = 7_bit;
+
 		// ``save_resume_data()`` asks libtorrent to generate fast-resume data for
-		// this torrent.
+		// this torrent. The fast resume data (stored in an add_torrent_params
+		// object) can be used to resume a torrent in the next session without
+		// having to check all files for which pieces have been downloaded. It
+		// can also be used to save a .torrent file for a torrent_handle.
 		//
 		// This operation is asynchronous, ``save_resume_data`` will return
-		// immediately. The resume data is delivered when it's done through an
+		// immediately. The resume data is delivered when it's done through a
 		// save_resume_data_alert.
 		//
-		// The fast resume data will be empty in the following cases:
+		// The operation will fail, and post a save_resume_data_failed_alert
+		// instead, in the following cases:
 		//
-		//	1. The torrent handle is invalid.
-		//	2. The torrent hasn't received valid metadata and was started without
+		//	1. The torrent is in the process of being removed.
+		//	2. No torrent state has changed since the last saving of resume
+		//	   data, and the only_if_modified flag is set.
 		//	   metadata (see libtorrent's metadata-from-peers_ extension)
 		//
-		// Note that by the time you receive the fast resume data, it may already
-		// be invalid if the torrent is still downloading! The recommended
-		// practice is to first pause the session, then generate the fast resume
-		// data, and then close it down. Make sure to not remove_torrent() before
-		// you receive the save_resume_data_alert though. There's no need to
-		// pause when saving intermittent resume data.
+		// Note that some counters may be outdated by the time you receive the fast resume data
 		//
-		//.. warning::
-		//   If you pause every torrent individually instead of pausing the
-		//   session, every torrent will have its paused state saved in the
-		//   resume data!
+		// When saving resume data because of shutting down, make sure not to
+		// remove_torrent() before you receive the save_resume_data_alert.
+		// There's no need to pause the session or torrent when saving resume
+		// data.
+		//
+		// The paused state of a torrent is saved in the resume data, so pausing
+		// all torrents before saving resume data will all torrents be restored
+		// in a paused state.
 		//
 		//.. note::
 		//   It is typically a good idea to save resume data whenever a torrent
-		//   is completed or paused. In those cases you don't need to pause the
-		//   torrent or the session, since the torrent will do no more writing to
-		//   its files. If you save resume data for torrents when they are
+		//   is completed or paused. If you save resume data for torrents when they are
 		//   paused, you can accelerate the shutdown process by not saving resume
-		//   data again for paused torrents. Completed torrents should have their
+		//   data again for those torrents. Completed torrents should have their
 		//   resume data saved when they complete and on exit, since their
 		//   statistics might be updated.
-		//
-		//	In full allocation mode the resume data is never invalidated by
-		//	subsequent writes to the files, since pieces won't move around. This
-		//	means that you don't need to pause before writing resume data in full
-		//	or sparse mode. If you don't, however, any data written to disk after
-		//	you saved resume data and before the session closed is lost.
-		//
-		// It also means that if the resume data is out dated, libtorrent will
-		// not re-check the files, but assume that it is fairly recent. The
-		// assumption is that it's better to loose a little bit than to re-check
-		// the entire file.
-		//
-		// It is still a good idea to save resume data periodically during
-		// download as well as when closing down.
 		//
 		// Example code to pause and save resume data for all torrents and wait
 		// for the alerts:
@@ -704,13 +771,9 @@ namespace aux {
 		//
 		//	extern int outstanding_resume_data; // global counter of outstanding resume data
 		//	std::vector<torrent_handle> handles = ses.get_torrents();
-		//	ses.pause();
 		//	for (torrent_handle const& h : handles) try
 		//	{
-		//		torrent_status s = h.status();
-		//		if (!s.has_metadata || !s.need_save_resume_data()) continue;
-		//
-		//		h.save_resume_data();
+		//		h.save_resume_data(torrent_handle::only_if_modified);
 		//		++outstanding_resume_data;
 		//	}
 		//	catch (lt::system_error const& e)
@@ -720,9 +783,9 @@ namespace aux {
 		//
 		//	while (outstanding_resume_data > 0)
 		//	{
-		//		alert const* a = ses.wait_for_alert(seconds(10));
+		//		alert const* a = ses.wait_for_alert(seconds(30));
 		//
-		//		// if we don't get an alert within 10 seconds, abort
+		//		// if we don't get an alert within 30 seconds, abort
 		//		if (a == nullptr) break;
 		//
 		//		std::vector<alert*> alerts;
@@ -744,11 +807,8 @@ namespace aux {
 		//				continue;
 		//			}
 		//
-		//			torrent_handle h = rd->handle;
-		//			torrent_status st = h.status(torrent_handle::query_save_path
-		//				| torrent_handle::query_name);
-		//			std::ofstream out((st.save_path
-		//				+ "/" + st.name + ".fastresume").c_str()
+		//			std::ofstream out((rd->params.save_path
+		//				+ "/" + rd->params.name + ".fastresume").c_str()
 		//				, std::ios_base::binary);
 		//			std::vector<char> buf = write_resume_data_buf(rd->params);
 		//			out.write(buf.data(), buf.size());
@@ -765,11 +825,16 @@ namespace aux {
 		//	the initial loop, and thwart the counter otherwise.
 		void save_resume_data(resume_data_flags_t flags = {}) const;
 
-		// This function returns true if any whole chunk has been downloaded
-		// since the torrent was first loaded or since the last time the resume
-		// data was saved. When saving resume data periodically, it makes sense
-		// to skip any torrent which hasn't downloaded anything since the last
-		// time.
+		// This function returns true if anything that is stored in the resume
+		// data has changed since the last time resume data was saved.
+		// The overload that takes ``flags`` let you ask if specific categories
+		// of properties have changed. These flags have the same behavior as in
+		// the save_resume_data() call.
+		//
+		// This is a *blocking* call. It will wait for a response from
+		// libtorrent's main thread. A way to avoid blocking is to instead
+		// call save_resume_data() directly, specifying the conditions under
+		// which resume data should be saved.
 		//
 		//.. note::
 		//	A torrent's resume data is considered saved as soon as the
@@ -777,6 +842,7 @@ namespace aux {
 		//	alert is received and handled in order for this function to be
 		//	meaningful.
 		bool need_save_resume_data() const;
+		bool need_save_resume_data(resume_data_flags_t flags) const;
 
 		// Every torrent that is added is assigned a queue position exactly one
 		// greater than the greatest queue position of all existing torrents.
@@ -858,9 +924,9 @@ namespace aux {
 		// like piece layers, dht nodes and trackers. A torrent_info object does
 		// not round-trip cleanly when added to a session.
 		//
-		// This means if you want to create a .torrent file by passing the
-		// torrent_info object into create_torrent, you need to use
-		// torrent_file_with_hashes() instead.
+		// If you want to save a .torrent file from the torrent_handle, instead
+		// call save_resume_data() and write_torrent_file() the
+		// add_torrent_params object passed back in the alert.
 		//
 		// torrent_file_with_hashes() returns a *copy* of the internal
 		// torrent_info and piece layer hashes (if it's a v2 torrent). The piece
@@ -869,8 +935,9 @@ namespace aux {
 		// the piece layers are available. This function is more expensive than
 		// torrent_file() since it needs to make copies of this information.
 		//
-		// When constructing a create_torrent object from a torrent_info that's
-		// in a session, you need to use this function.
+		// The torrent_file_with_hashes() is here for backwards compatibility
+		// when constructing a create_torrent object from a torrent_info that's
+		// in a session. Prefer save_resume_data() + write_torrent_file().
 		//
 		// Note that a torrent added from a magnet link may not have the full
 		// merkle trees for all files, and hence not have the complete piece
@@ -974,14 +1041,18 @@ namespace aux {
 		// ================ end deprecation ============
 #endif
 
-		// Fills the specified ``std::vector<int>`` with the availability for
-		// each piece in this torrent. libtorrent does not keep track of
-		// availability for seeds, so if the torrent is seeding the availability
-		// for all pieces is reported as 0.
-		//
 		// The piece availability is the number of peers that we are connected
 		// that has advertised having a particular piece. This is the information
 		// that libtorrent uses in order to prefer picking rare pieces.
+		//
+		// ``post_piece_availability()`` will trigger a piece_availability_alert
+		// to be posted.
+		//
+		// ``piece_availability()`` fills the specified ``std::vector<int>``
+		// with the availability for each piece in this torrent. libtorrent does
+		// not keep track of availability for seeds, so if the torrent is
+		// seeding the availability for all pieces is reported as 0.
+		void post_piece_availability() const;
 		void piece_availability(std::vector<int>& avail) const;
 
 		// These functions are used to set and get the priority of individual

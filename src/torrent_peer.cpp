@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2014-2017, 2019-2020, Arvid Norberg
+Copyright (c) 2014-2017, 2019-2021, Arvid Norberg
 Copyright (c) 2016-2018, Alden Torres
 Copyright (c) 2018, Steven Siloti
 All rights reserved.
@@ -85,10 +85,12 @@ namespace libtorrent {
 		{
 			if (e1.port() > e2.port())
 				swap(e1, e2);
-			std::uint32_t p;
-			auto ptr = reinterpret_cast<char*>(&p);
+			std::array<char, 4> buf;
+			auto ptr = buf.data();
 			aux::write_uint16(e1.port(), ptr);
 			aux::write_uint16(e2.port(), ptr);
+			std::uint32_t p;
+			std::memcpy(&p, buf.data(), 4);
 			ret = crc32c_32(p);
 		}
 		else if (aux::is_v6(e1))

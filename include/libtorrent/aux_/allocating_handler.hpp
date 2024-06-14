@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015-2017, 2019-2020, Arvid Norberg
+Copyright (c) 2015-2017, 2019-2022, Arvid Norberg
 Copyright (c) 2016, Alden Torres
 Copyright (c) 2019, Steven Siloti
 Copyright (c) 2020, Paul-Louis Ageneau
@@ -70,8 +70,13 @@ namespace libtorrent { namespace aux {
 	constexpr std::size_t debug_tick = 0;
 #endif
 #if TORRENT_USE_SSL
+#ifdef __MINGW64__
+	constexpr std::size_t openssl_read_cost = 26 + 21 * sizeof(void*);
+	constexpr std::size_t openssl_write_cost = 26 + 21 * sizeof(void*);
+#else
 	constexpr std::size_t openssl_read_cost = 26 + 14 * sizeof(void*);
 	constexpr std::size_t openssl_write_cost = 26 + 14 * sizeof(void*);
+#endif
 #else
 	constexpr std::size_t openssl_read_cost = 0;
 	constexpr std::size_t openssl_write_cost = 0;

@@ -1,9 +1,9 @@
 /*
 
 Copyright (c) 2016, Steven Siloti
-Copyright (c) 2007-2010, 2013-2020, Arvid Norberg
-Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2007-2010, 2013-2020, 2022, Arvid Norberg
 Copyright (c) 2016-2018, 2020, Alden Torres
+Copyright (c) 2016, Andrei Kurushin
 Copyright (c) 2020, Paul-Louis Ageneau
 All rights reserved.
 
@@ -138,7 +138,7 @@ void run_test(std::string const& url, int size, int status, int connected
 		, &ssl_ctx
 #endif
 		);
-	h->get(url, seconds(5), 0, &ps, 5, "test/user-agent", boost::none, aux::resolver_flags{}, auth);
+	h->get(url, seconds(5), &ps, 5, "test/user-agent", boost::none, aux::resolver_flags{}, auth);
 	ios.restart();
 	ios.run();
 
@@ -240,7 +240,7 @@ TORRENT_TEST(socks5_pw_proxy_ssl) { run_suite("https", settings_pack::socks5_pw)
 #endif // USE_SSL
 
 TORRENT_TEST(http_proxy) { run_suite("http", settings_pack::http); }
-TORRENT_TEST(http__pwproxy) { run_suite("http", settings_pack::http_pw); }
+TORRENT_TEST(http_pwproxy) { run_suite("http", settings_pack::http_pw); }
 TORRENT_TEST(socks5_proxy) { run_suite("http", settings_pack::socks5); }
 TORRENT_TEST(socks5_pw_proxy) { run_suite("http", settings_pack::socks5_pw); }
 

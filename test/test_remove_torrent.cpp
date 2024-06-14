@@ -1,9 +1,9 @@
 /*
 
+Copyright (c) 2017-2021, Arvid Norberg
 Copyright (c) 2017, Steven Siloti
-Copyright (c) 2017-2020, Arvid Norberg
-Copyright (c) 2018, d-komarov
 Copyright (c) 2018, Alden Torres
+Copyright (c) 2018, d-komarov
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -59,7 +59,8 @@ namespace {
 enum test_case {
 	complete_download,
 	partial_download,
-	mid_download
+	mid_download,
+	double_remove,
 };
 
 void test_remove_torrent(remove_flags_t const remove_options
@@ -116,7 +117,7 @@ void test_remove_torrent(remove_flags_t const remove_options
 	for (int i = 0; i < 200; ++i)
 	{
 		print_alerts(ses1, "ses1", true, true);
-//		print_alerts(ses2, "ses2", true, true);
+		print_alerts(ses2, "ses2", true, true);
 
 		st1 = tor1.status();
 		std::cout << "st1.total_payload_upload: " << st1.total_payload_upload << '\n';
@@ -151,6 +152,12 @@ void test_remove_torrent(remove_flags_t const remove_options
 
 	ses2.remove_torrent(tor2, remove_options);
 	ses1.remove_torrent(tor1, remove_options);
+
+	if (test == double_remove)
+	{
+		ses2.remove_torrent(tor2, remove_options);
+		ses1.remove_torrent(tor1, remove_options);
+	}
 
 	std::cerr << "removed" << std::endl;
 
@@ -221,4 +228,12 @@ TORRENT_TEST(remove_torrent_and_files_mid_download)
 	test_remove_torrent(session::delete_files, mid_download);
 }
 
+TORRENT_TEST(remove_torrent_twice)
+{
+	test_remove_torrent({}, double_remove);
+}
 
+TORRENT_TEST(remove_torrent_and_files_twice)
+{
+	test_remove_torrent(session::delete_files, double_remove);
+}

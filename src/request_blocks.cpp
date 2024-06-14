@@ -1,7 +1,8 @@
 /*
 
-Copyright (c) 2014-2020, Arvid Norberg
+Copyright (c) 2014-2021, Arvid Norberg
 Copyright (c) 2016, 2019-2020, Alden Torres
+Copyright (c) 2021, Denis Kuzmenok
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -140,10 +141,6 @@ namespace libtorrent {
 		// the number of blocks we want, but it will try to make the picked
 		// blocks be from whole pieces, possibly by returning more blocks
 		// than we requested.
-#if TORRENT_USE_ASSERTS
-		error_code ec;
-		TORRENT_ASSERT(c.remote() == c.get_socket().remote_endpoint(ec) || ec);
-#endif
 
 		aux::session_interface& ses = t.session();
 

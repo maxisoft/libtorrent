@@ -1,8 +1,8 @@
 /*
 
 Copyright (c) 2017, BitTorrent Inc.
+Copyright (c) 2019-2021, Arvid Norberg
 Copyright (c) 2019-2020, Steven Siloti
-Copyright (c) 2019-2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -181,9 +181,9 @@ bool validate_hash_request(hash_request const& hr, file_storage const& fs)
 			}
 		}
 
-		for (file_index_t fidx(0); fidx < m_piece_hash_requested.end_index(); ++fidx)
+		for (auto const fidx : m_piece_hash_requested.range())
 		{
-			if (m_files.pad_file_at(fidx)) continue;
+			if (m_files.pad_file_at(fidx) || m_files.file_size(fidx) == 0) continue;
 
 			int const file_first_piece = int(m_files.file_offset(fidx) / m_files.piece_length());
 			int const num_layers = file_num_layers(fidx);
@@ -292,9 +292,7 @@ bool validate_hash_request(hash_request const& hr, file_storage const& fs)
 		auto const f = m_files.file_index_at_piece(piece);
 
 		if (m_files.pad_file_at(f))
-		{
-			return { 0, 0 };
-		}
+			return { set_block_hash_result::result::success, 0, 0 };
 
 		auto& merkle_tree = m_merkle_trees[f];
 		piece_index_t const file_first_piece = m_files.piece_index_at_file(f);
@@ -316,13 +314,17 @@ bool validate_hash_request(hash_request const& hr, file_storage const& fs)
 
 		if (result == aux::merkle_tree::set_block_result::unknown)
 			return set_block_hash_result::unknown();
-		if (result == aux::merkle_tree::set_block_result::hash_failed)
-				return set_block_hash_result::piece_hash_failed();
 		if (result == aux::merkle_tree::set_block_result::block_hash_failed)
-				return set_block_hash_result::block_hash_failed();
+			return set_block_hash_result::block_hash_failed();
+
+		auto const status = (result == aux::merkle_tree::set_block_result::hash_failed)
+			? set_block_hash_result::result::piece_hash_failed
+			: set_block_hash_result::result::success;
 
 		int const blocks_per_piece = m_files.piece_length() / default_block_size;
-		return { int(leafs_index - static_cast<int>(piece - file_first_piece) * blocks_per_piece)
+
+		return { status
+			, int(leafs_index - static_cast<int>(piece - file_first_piece) * blocks_per_piece)
 			, std::min(leafs_size, m_files.file_num_pieces(f) * blocks_per_piece - leafs_index) };
 	}
 

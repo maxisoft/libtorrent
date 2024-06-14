@@ -1,4 +1,4 @@
-VERSION=2.0.6
+VERSION=2.0.11
 
 BUILD_CONFIG=release link=shared crypto=openssl warnings=off address-model=64
 
@@ -207,6 +207,7 @@ PYTHON_FILES= \
   src/fingerprint.cpp       \
   src/gil.hpp               \
   src/ip_filter.cpp         \
+  src/load_torrent.cpp      \
   src/magnet_uri.cpp        \
   src/module.cpp            \
   src/optional.hpp          \
@@ -229,11 +230,13 @@ EXAMPLE_FILES= \
   bt-get.cpp \
   bt-get2.cpp \
   bt-get3.cpp \
+  check_files.cpp \
   client_test.cpp \
   cmake/FindLibtorrentRasterbar.cmake \
   connection_tester.cpp \
   dump_torrent.cpp \
   dump_bdecode.cpp \
+  magnet2torrent.cpp \
   make_torrent.cpp \
   print.cpp \
   print.hpp \
@@ -242,6 +245,7 @@ EXAMPLE_FILES= \
   simple_client.cpp \
   custom_storage.cpp \
   stats_counters.cpp \
+  torrent2magnet.cpp \
   torrent_view.cpp \
   torrent_view.hpp \
   upnp_test.cpp
@@ -311,6 +315,7 @@ SOURCES = \
   disk_io_thread_pool.cpp         \
   disk_job_fence.cpp              \
   disk_job_pool.cpp               \
+  drive_info.cpp                  \
   entry.cpp                       \
   enum_net.cpp                    \
   error_code.cpp                  \
@@ -338,6 +343,7 @@ SOURCES = \
   ip_notifier.cpp                 \
   ip_voter.cpp                    \
   listen_socket_handle.cpp        \
+  load_torrent.cpp                \
   lsd.cpp                         \
   magnet_uri.cpp                  \
   merkle.cpp                      \
@@ -452,6 +458,7 @@ HEADERS = \
   extensions.hpp               \
   file.hpp                     \
   file_storage.hpp             \
+  file_layout.hpp              \
   fingerprint.hpp              \
   flags.hpp                    \
   fwd.hpp                      \
@@ -475,6 +482,7 @@ HEADERS = \
   ip_voter.hpp                 \
   libtorrent.hpp               \
   link.hpp                     \
+  load_torrent.hpp             \
   lsd.hpp                      \
   magnet_uri.hpp               \
   mmap_disk_io.hpp             \
@@ -592,10 +600,12 @@ HEADERS = \
   aux_/disk_io_thread_pool.hpp      \
   aux_/disk_job_fence.hpp           \
   aux_/disk_job_pool.hpp            \
+  aux_/drive_info.hpp               \
   aux_/ed25519.hpp                  \
   aux_/escape_string.hpp            \
   aux_/export.hpp                   \
   aux_/ffs.hpp                      \
+  aux_/file_descriptor.hpp          \
   aux_/file_pointer.hpp             \
   aux_/file_progress.hpp            \
   aux_/file_view_pool.hpp           \
@@ -615,6 +625,7 @@ HEADERS = \
   aux_/merkle_tree.hpp              \
   aux_/mmap.hpp                     \
   aux_/mmap_disk_job.hpp            \
+  aux_/netlink_utils.hpp            \
   aux_/noexcept_movable.hpp         \
   aux_/numeric_cast.hpp             \
   aux_/open_mode.hpp                \
@@ -660,6 +671,7 @@ HEADERS = \
   aux_/windows.hpp                  \
   aux_/win_cng.hpp                  \
   aux_/win_crypto_provider.hpp      \
+  aux_/win_file_handle.hpp          \
   aux_/win_util.hpp                 \
   \
   extensions/smart_ban.hpp          \
@@ -766,7 +778,9 @@ SIM_SOURCES = \
   test_torrent_status.cpp \
   test_tracker.cpp \
   test_transfer.cpp \
-  test_transfer_matrix.cpp \
+  test_transfer_full_invalid_files.cpp \
+  test_transfer_no_files.cpp \
+  test_transfer_partial_valid_files.cpp \
   test_utp.cpp \
   test_web_seed.cpp \
   transfer_sim.hpp \
@@ -972,7 +986,10 @@ TEST_TORRENTS = \
   backslash_path.torrent \
   bad_name.torrent \
   base.torrent \
+  collection.torrent \
+  collection2.torrent \
   creation_date.torrent \
+  dht_nodes.torrent \
   duplicate_files.torrent \
   duplicate_web_seeds.torrent \
   empty_httpseed.torrent \
@@ -997,6 +1014,7 @@ TEST_TORRENTS = \
   invalid_pieces.torrent \
   invalid_symlink.torrent \
   large.torrent \
+  large_piece_size.torrent \
   long_name.torrent \
   many_pieces.torrent \
   missing_path_list.torrent \
@@ -1012,6 +1030,8 @@ TEST_TORRENTS = \
   pad_file_no_path.torrent \
   parent_path.torrent \
   sample.torrent \
+  similar.torrent \
+  similar2.torrent \
   single_multi_file.torrent \
   slash_path.torrent \
   slash_path2.torrent \
@@ -1032,6 +1052,7 @@ TEST_TORRENTS = \
   url_seed_multi_space_nolist.torrent \
   whitespace_url.torrent \
   v2.torrent \
+  v2_empty_file.torrent \
   v2_multipiece_file.torrent \
   v2_only.torrent \
   v2_invalid_filename.torrent \
@@ -1044,7 +1065,9 @@ TEST_TORRENTS = \
   v2_incomplete_piece_layer.torrent \
   v2_invalid_pad_file.torrent \
   v2_invalid_piece_layer.torrent \
+  v2_invalid_piece_layer_root.torrent \
   v2_invalid_piece_layer_size.torrent \
+  v2_unknown_piece_layer_entry.torrent \
   v2_multiple_files.torrent \
   v2_bad_file_alignment.torrent \
   v2_unordered_files.torrent \
@@ -1058,6 +1081,7 @@ TEST_TORRENTS = \
   v2_zero_root.torrent \
   v2_zero_root_small.torrent \
   v2_hybrid.torrent \
+  v2_hybrid-missing-tailpad.torrent \
   v2_invalid_root_hash.torrent \
   zero.torrent \
   zero2.torrent
@@ -1081,7 +1105,6 @@ TEST_EXTRA = Jamfile \
   root2.xml                          \
   root3.xml                          \
   ssl/regenerate_test_certificate.sh \
-  ssl/cert_request.pem               \
   ssl/dhparams.pem                   \
   ssl/invalid_peer_certificate.pem   \
   ssl/invalid_peer_private_key.pem   \

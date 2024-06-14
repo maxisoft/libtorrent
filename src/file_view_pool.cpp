@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2016, 2019-2020, Arvid Norberg
+Copyright (c) 2016, 2019-2021, Arvid Norberg
 Copyright (c) 2019, Steven Siloti
 All rights reserved.
 
@@ -35,6 +35,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #if TORRENT_HAVE_MMAP || TORRENT_HAVE_MAP_VIEW_OF_FILE
 
+#define TRACE_FILE_VIEW_POOL 0
+
 #include "libtorrent/assert.hpp"
 #include "libtorrent/aux_/file_view_pool.hpp"
 #include "libtorrent/error_code.hpp"
@@ -42,11 +44,18 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/units.hpp"
 #include "libtorrent/disk_interface.hpp"
 #include "libtorrent/aux_/path.hpp"
+#include "libtorrent/aux_/throw.hpp"
 #ifdef TORRENT_WINDOWS
 #include "libtorrent/aux_/win_util.hpp"
 #endif
 
 #include <limits>
+
+#if TRACE_FILE_VIEW_POOL
+#include <iostream>
+#include <thread>
+#endif
+
 
 using namespace libtorrent::flags;
 
@@ -55,7 +64,8 @@ namespace libtorrent { namespace aux {
 	file_view_pool::file_view_pool(int size) : m_size(size) {}
 	file_view_pool::~file_view_pool() = default;
 
-	file_view file_view_pool::open_file(storage_index_t st, std::string const& p
+	std::shared_ptr<file_mapping>
+	file_view_pool::open_file(storage_index_t st, std::string const& p
 		, file_index_t const file_index, file_storage const& fs
 		, open_mode_t const m
 #if TORRENT_HAVE_MAP_VIEW_OF_FILE
@@ -75,7 +85,45 @@ namespace libtorrent { namespace aux {
 
 		TORRENT_ASSERT(is_complete(p));
 		auto& key_view = m_files.get<0>();
-		auto i = key_view.find(file_id{st, file_index});
+		file_id const file_key{st, file_index};
+		auto i = key_view.find(file_key);
+
+		if (i == key_view.end())
+		{
+			auto opening = std::find_if(m_opening_files.begin(), m_opening_files.end()
+				, [&file_key, m](opening_file_entry const& oe) {
+					return oe.file_key == file_key
+						&& (!(m & open_mode::write) || (oe.mode & open_mode::write));
+				});
+			if (opening != m_opening_files.end())
+			{
+				wait_open_entry woe;
+				opening->waiters.push_back(woe);
+
+#if TRACE_FILE_VIEW_POOL
+				std::cout << std::this_thread::get_id() << " waiting for: ("
+					<< file_key.first << ", " << file_key.second << ")\n";
+#endif
+				do {
+					woe.cond.wait(l);
+				} while (!woe.mapping && !woe.error);
+				if (woe.error)
+				{
+#if TRACE_FILE_VIEW_POOL
+					std::cout << std::this_thread::get_id() << " open failed: ("
+						<< file_key.first << ", " << file_key.second
+						<< "): " << woe.error.ec << std::endl;
+#endif
+					throw_ex<storage_error>(woe.error);
+				}
+
+#if TRACE_FILE_VIEW_POOL
+				std::cout << std::this_thread::get_id() << " file opened: ("
+					<< file_key.first << ", " << file_key.second << ")\n";
+#endif
+				return woe.mapping;
+			}
+		}
 
 		// make sure the write bit is set if we asked for it
 		// it's OK to use a read-write file if we just asked for read. But if
@@ -92,7 +140,7 @@ namespace libtorrent { namespace aux {
 			auto& lru_view = m_files.get<1>();
 			lru_view.relocate(m_files.project<1>(i), lru_view.begin());
 
-			return i->mapping->view();
+			return i->mapping;
 		}
 
 		if (int(m_files.size()) >= m_size - 1)
@@ -102,62 +150,177 @@ namespace libtorrent { namespace aux {
 			defer_destruction1 = remove_oldest(l);
 		}
 
+		opening_file_entry ofe;
+		ofe.file_key = file_key;
+		ofe.mode = m;
+		m_opening_files.push_back(ofe);
+
+#if TRACE_FILE_VIEW_POOL
+		std::cout << std::this_thread::get_id() << " opening file: ("
+			<< file_key.first << ", " << file_key.second << ")\n";
+#endif
+
 		l.unlock();
 
+		try
+		{
+			file_entry e = open_file_impl(p, file_index, fs, m, file_key
+#if TORRENT_HAVE_MAP_VIEW_OF_FILE
+				, open_unmap_lock
+#endif
+				);
+
+			l.lock();
+
+			// there's an edge case where two threads are racing to insert a newly
+			// opened file, one thread is opening a file for writing and the other
+			// fore reading. If the reading thread wins, it's important that the
+			// thread opening for writing still overwrites the file in the pool,
+			// since a file opened for reading and writing can be used for both.
+			// So, we can't move e in here, because we may need it again of the
+			// insertion failed.
+			// if the insertion failed, check to see if we can use the existing
+			// entry. If not, overwrite it with the newly opened file ``e``.
+			bool added;
+			std::tie(i, added) = key_view.insert(e);
+			if (added == false)
+			{
+				// this is the case where this file was already in the pool. Make
+				// sure we can use it. If we asked for write mode, it must have been
+				// opened in write mode too.
+				TORRENT_ASSERT(i != key_view.end());
+
+				if ((m & open_mode::write) && !(i->mode & open_mode::write))
+				{
+					key_view.modify(i, [&](file_entry& fe)
+					{
+						defer_destruction2 = std::move(fe.mapping);
+						fe = std::move(e);
+					});
+				}
+
+				auto& lru_view = m_files.get<1>();
+				lru_view.relocate(m_files.project<1>(i), lru_view.begin());
+			}
+			notify_file_open(ofe, i->mapping, storage_error());
+			return i->mapping;
+		}
+		catch (storage_error const& se)
+		{
+			if (!l.owns_lock()) l.lock();
+			notify_file_open(ofe, {}, se);
+			throw;
+		}
+		catch (std::bad_alloc const&)
+		{
+			if (!l.owns_lock()) l.lock();
+			notify_file_open(ofe, {}, storage_error(
+				errors::no_memory, file_index, operation_t::file_open));
+			throw;
+		}
+		catch (boost::system::system_error const& se)
+		{
+			if (!l.owns_lock()) l.lock();
+			notify_file_open(ofe, {}, storage_error(
+				se.code(), file_index, operation_t::file_open));
+			throw;
+		}
+		catch (...)
+		{
+			if (!l.owns_lock()) l.lock();
+			notify_file_open(ofe, {}, storage_error(
+				errors::no_memory, file_index, operation_t::file_open));
+			throw;
+		}
+	}
+
+	void file_view_pool::notify_file_open(opening_file_entry& ofe
+		, std::shared_ptr<file_mapping> mapping
+		, lt::storage_error const& se = lt::storage_error())
+	{
+#if TRACE_FILE_VIEW_POOL
+		if (!ofe.waiters.empty())
+		{
+			std::cout << std::this_thread::get_id() << " notify_file_open: ("
+				<< ofe.file_key.first << ", " << ofe.file_key.second << ")\n";
+		}
+#endif
+
+		m_opening_files.erase(m_opening_files.s_iterator_to(ofe));
+		for (auto& woe : ofe.waiters)
+		{
+			woe.mapping = mapping;
+			woe.error = se;
+			woe.cond.notify_all();
+		}
+	}
+
+	file_view_pool::file_entry file_view_pool::open_file_impl(std::string const& p
+		, file_index_t const file_index, file_storage const& fs
+		, open_mode_t const m, file_id const file_key
+#if TORRENT_HAVE_MAP_VIEW_OF_FILE
+		, std::shared_ptr<std::mutex> open_unmap_lock
+#endif
+		)
+	{
+		std::string const file_path = fs.file_path(file_index, p);
 #if TORRENT_HAVE_MAP_VIEW_OF_FILE
 		std::unique_lock<std::mutex> lou(*open_unmap_lock);
 #endif
-		file_entry e({st, file_index}, fs.file_path(file_index, p), m
-			, fs.file_size(file_index)
-#if TORRENT_HAVE_MAP_VIEW_OF_FILE
-			, open_unmap_lock
-#endif
-			);
-#if TORRENT_HAVE_MAP_VIEW_OF_FILE
-		lou.unlock();
-#endif
-		l.lock();
-
-		// there's an edge case where two threads are racing to insert a newly
-		// opened file, one thread is opening a file for writing and the other
-		// fore reading. If the reading thread wins, it's important that the
-		// thread opening for writing still overwrites the file in the pool,
-		// since a file opened for reading and writing can be used for both.
-		// So, we can't move e in here, because we may need it again of the
-		// insertion failed.
-		// if the insertion failed, check to see if we can use the existing
-		// entry. If not, overwrite it with the newly opened file ``e``.
-		bool added;
-		std::tie(i, added) = key_view.insert(e);
-		if (added == false)
+		try
 		{
-			// this is the case where this file was already in the pool. Make
-			// sure we can use it. If we asked for write mode, it must have been
-			// opened in write mode too.
-			TORRENT_ASSERT(i != key_view.end());
-
-			if ((m & open_mode::write) && !(i->mode & open_mode::write))
+			return file_entry(file_key, file_path, m, fs.file_size(file_index)
+#if TORRENT_HAVE_MAP_VIEW_OF_FILE
+				, open_unmap_lock
+#endif
+				);
+		}
+		catch (storage_error& se)
+		{
+			// opening the file failed. If it was because the directory was
+			// missing, create it and try again. Otherwise, propagate the
+			// error
+			if (!(m & open_mode::write)
+				|| (se.ec != boost::system::errc::no_such_file_or_directory
+#ifdef TORRENT_WINDOWS
+					// this is a workaround for improper handling of files on windows shared drives.
+					// if the directory on a shared drive does not exist,
+					// windows returns ERROR_IO_DEVICE instead of ERROR_FILE_NOT_FOUND
+					&& se.ec != error_code(ERROR_IO_DEVICE, system_category())
+#endif
+				   ))
 			{
-				key_view.modify(i, [&](file_entry& fe)
-				{
-					defer_destruction2 = std::move(fe.mapping);
-					fe = std::move(e);
-				});
+				throw;
 			}
 
-			auto& lru_view = m_files.get<1>();
-			lru_view.relocate(m_files.project<1>(i), lru_view.begin());
-		}
+			// create directory and try again
+			// this means the directory the file is in doesn't exist.
+			// so create it
+			se.ec.clear();
+			create_directories(parent_path(fs.file_path(file_index, p)), se.ec);
 
-		return i->mapping->view();
+			if (se.ec)
+			{
+				// if the directory creation failed, don't try to open the file again
+				// but actually just fail
+				throw_ex<storage_error>(se);
+			}
+
+			return file_entry(file_key, file_path, m, fs.file_size(file_index)
+#if TORRENT_HAVE_MAP_VIEW_OF_FILE
+				, open_unmap_lock
+#endif
+				);
+		}
 	}
 
-	file_open_mode_t to_file_open_mode(open_mode_t const mode)
+	file_open_mode_t to_file_open_mode(open_mode_t const mode, bool const has_mapping)
 	{
 		return ((mode & open_mode::write)
 				? file_open_mode::read_write : file_open_mode::read_only)
 			| ((mode & open_mode::no_atime)
 				? file_open_mode::no_atime : file_open_mode::read_only)
+			| (has_mapping ? file_open_mode::mmapped : file_open_mode_t{})
 			;
 	}
 
@@ -174,7 +337,7 @@ namespace libtorrent { namespace aux {
 			for (auto i = start; i != end; ++i)
 			{
 				ret.push_back({i->key.second
-					, to_file_open_mode(i->mode)
+					, to_file_open_mode(i->mode, i->mapping->has_memory_map())
 					, i->last_use});
 			}
 		}
@@ -185,6 +348,11 @@ namespace libtorrent { namespace aux {
 	{
 		auto& lru_view = m_files.get<1>();
 		if (lru_view.size() == 0) return {};
+
+#if TRACE_FILE_VIEW_POOL
+		std::cout << std::this_thread::get_id() << " removing: ("
+			<< lru_view.back().key.first << ", " << lru_view.back().key.second << ")\n";
+#endif
 
 		auto mapping = std::move(lru_view.back().mapping);
 		lru_view.pop_back();

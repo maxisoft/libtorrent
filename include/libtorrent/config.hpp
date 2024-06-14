@@ -1,10 +1,11 @@
 /*
 
-Copyright (c) 2005, 2008-2020, Arvid Norberg
+Copyright (c) 2005, 2008-2022, Arvid Norberg
+Copyright (c) 2009, Daniel Wallin
 Copyright (c) 2015, John Sebastian Peterson
-Copyright (c) 2016, terry zhao
-Copyright (c) 2016-2017, 2019, Alden Torres
+Copyright (c) 2016-2017, 2019, 2021, Alden Torres
 Copyright (c) 2016, 2019, Andrei Kurushin
+Copyright (c) 2016, terry zhao
 Copyright (c) 2017, Steven Siloti
 Copyright (c) 2018, Pavel Pimenov
 Copyright (c) 2020, Paul-Louis Ageneau
@@ -42,7 +43,9 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/aux_/disable_warnings_push.hpp"
 
+#if !defined __MINGW64__ && !defined __MINGW32__
 #define _FILE_OFFSET_BITS 64
+#endif
 
 #include <cstddef>
 
@@ -60,6 +63,21 @@ POSSIBILITY OF SUCH DAMAGE.
 // format codes are. So we need to disable those for mingw targets
 #pragma GCC diagnostic ignored "-Wformat"
 #pragma GCC diagnostic ignored "-Wformat-extra-args"
+// Mingw does not like friend declarations of dllexport functions. This
+// suppresses those warnings
+#pragma GCC diagnostic ignored "-Wattributes"
+#endif
+
+// This is the GCC indication of building with address sanitizer
+#if defined __SANITIZE_ADDRESS__ && __SANITIZE_ADDRESS__
+#define TORRENT_ADDRESS_SANITIZER 1
+#endif
+
+// This is the clang indication of building with address sanitizer
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define TORRENT_ADDRESS_SANITIZER 1
+#endif
 #endif
 
 #if defined __GNUC__
@@ -126,7 +144,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_USE_EXECINFO 1
 #endif
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1070
+// this is used for the ip_change_notifier on macOS, which isn't supported on
+// 10.6 and earlier
 #define TORRENT_USE_SYSTEMCONFIGURATION 1
+#endif
 
 #if TARGET_OS_IPHONE
 #define TORRENT_USE_SC_NETWORK_REACHABILITY 1
@@ -164,7 +186,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_HAVE_MMAP 1
 #endif
 
-#if defined __GLIBC__ && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 27))
+#if defined __GLIBC__ && (__GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 27))
+#define TORRENT_HAS_COPY_FILE_RANGE 0
+#elif defined __ANDROID__
+#define TORRENT_HAS_COPY_FILE_RANGE 0
+#else
 #define TORRENT_HAS_COPY_FILE_RANGE 1
 #endif
 
@@ -220,6 +246,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #elif defined _POSIX_C_SOURCE && _POSIX_C_SOURCE < 200112L
 #define TORRENT_HAS_FALLOCATE 0
 #endif
+
+#define TORRENT_USE_SYNC_FILE_RANGE 1
 
 #endif // ANDROID
 
@@ -480,6 +508,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_USE_MADVISE 0
 #endif
 
+#ifndef TORRENT_USE_SYNC_FILE_RANGE
+#define TORRENT_USE_SYNC_FILE_RANGE 0
+#endif
+
+
 #ifndef TORRENT_COMPLETE_TYPES_REQUIRED
 #define TORRENT_COMPLETE_TYPES_REQUIRED 0
 #endif
@@ -559,19 +592,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #error "invariant checks cannot be enabled without asserts"
 #endif
 
-// for non-exception builds
-#ifdef BOOST_NO_EXCEPTIONS
-#define TORRENT_TRY if (true)
-#define TORRENT_CATCH(x) else if (false)
-#define TORRENT_CATCH_ALL else if (false)
-#define TORRENT_DECLARE_DUMMY(x, y) x y
-#else
-#define TORRENT_TRY try
-#define TORRENT_CATCH(x) catch(x)
-#define TORRENT_CATCH_ALL catch(...)
-#define TORRENT_DECLARE_DUMMY(x, y)
-#endif // BOOST_NO_EXCEPTIONS
-
 // SSE is x86 / amd64 specific. On top of that, we only
 // know how to access it on msvc and gcc (and gcc compatibles).
 // GCC requires the user to enable SSE support in order for
@@ -598,6 +618,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef __has_builtin
 #define __has_builtin(x) 0  // for non-clang compilers
+#endif
+
+#ifdef __cpp_guaranteed_copy_elision
+#define TORRENT_RVO(x) x
+#else
+#define TORRENT_RVO(x) std::move(x)
 #endif
 
 #if (TORRENT_HAS_SSE && defined __GNUC__)

@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2006, 2009, 2013-2020, Arvid Norberg
+Copyright (c) 2006, 2009, 2013-2021, Arvid Norberg
 Copyright (c) 2016, Alden Torres
 Copyright (c) 2019, Steven Siloti
 All rights reserved.
@@ -43,10 +43,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <mutex>
 #include <vector>
 #include <memory>
+#include <condition_variable>
 
 #include "libtorrent/aux_/time.hpp"
 #include "libtorrent/units.hpp"
 #include "libtorrent/storage_defs.hpp"
+#include "libtorrent/error_code.hpp"
 #include "libtorrent/aux_/mmap.hpp"
 
 #include "libtorrent/aux_/disable_warnings_push.hpp"
@@ -57,6 +59,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
 #include <boost/multi_index/member.hpp>
+
+#include <boost/intrusive/list.hpp>
 
 #include "libtorrent/aux_/disable_warnings_pop.hpp"
 
@@ -69,7 +73,7 @@ namespace aux {
 
 	namespace mi = boost::multi_index;
 
-	TORRENT_EXTRA_EXPORT file_open_mode_t to_file_open_mode(open_mode_t const);
+	TORRENT_EXTRA_EXPORT file_open_mode_t to_file_open_mode(open_mode_t, bool const mmapped);
 
 	// this is an internal cache of open file mappings.
 	struct TORRENT_EXTRA_EXPORT file_view_pool
@@ -85,7 +89,8 @@ namespace aux {
 		// return an open file handle to file at ``file_index`` in the
 		// file_storage ``fs`` opened at save path ``p``. ``m`` is the
 		// file open mode (see file::open_mode_t).
-		file_view open_file(storage_index_t st, std::string const& p
+		std::shared_ptr<file_mapping>
+		open_file(storage_index_t st, std::string const& p
 			, file_index_t file_index, file_storage const& fs, open_mode_t m
 #if TORRENT_HAVE_MAP_VIEW_OF_FILE
 			, std::shared_ptr<std::mutex> open_unmap_lock
@@ -165,6 +170,62 @@ namespace aux {
 #endif
 			>
 		>;
+
+		struct wait_open_entry
+		{
+			boost::intrusive::list_member_hook<> list_hook;
+
+			std::condition_variable cond;
+
+			// the open file is passed back to the waiting threads, just in case
+			// the pool size is so small that it's otherwise evicted between
+			// being notified and waking up to look for it.
+			std::shared_ptr<file_mapping> mapping;
+
+			// if opening the file fails, waiters are also notified but there
+			// won't be a mapping. Then this error code is set.
+			lt::storage_error error = {};
+		};
+
+		struct opening_file_entry
+		{
+			boost::intrusive::list_member_hook<> list_hook;
+
+			file_id file_key;
+
+			// the open mode for the file the thread is opening. A thread
+			// needing a file opened in read-write mode should not wait for a
+			// thread opening the file in read mode
+			open_mode_t mode{};
+
+			boost::intrusive::list<wait_open_entry
+				, boost::intrusive::member_hook<wait_open_entry
+				, boost::intrusive::list_member_hook<>
+				, &wait_open_entry::list_hook>
+			> waiters;
+		};
+
+		void notify_file_open(opening_file_entry& ofe, std::shared_ptr<file_mapping>, lt::storage_error const&);
+
+		file_entry open_file_impl(std::string const& p
+			, file_index_t file_index, file_storage const& fs
+			, open_mode_t m, file_id file_key
+#if TORRENT_HAVE_MAP_VIEW_OF_FILE
+			, std::shared_ptr<std::mutex> open_unmap_lock
+#endif
+			);
+
+		// In order to avoid multiple threads opening the same file in parallel,
+		// just to race to add it to the pool. This list, also protected by
+		// m_mutex, contains files that one thread is currently opening. If
+		// another thread also need this file, it can add itself to the waiters
+		// list. The condition variable will then be notified when the file has
+		// been opened.
+		boost::intrusive::list<opening_file_entry
+			, boost::intrusive::member_hook<opening_file_entry
+			, boost::intrusive::list_member_hook<>
+			, &opening_file_entry::list_hook>
+			> m_opening_files;
 
 		// maps storage pointer, file index pairs to the lru entry for the file
 		files_container m_files;

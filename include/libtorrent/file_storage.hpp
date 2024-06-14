@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2008-2010, 2012-2020, Arvid Norberg
+Copyright (c) 2008-2010, 2012-2021, Arvid Norberg
 Copyright (c) 2016, 2020, Alden Torres
 Copyright (c) 2017, 2019, Steven Siloti
 All rights reserved.
@@ -238,6 +238,21 @@ namespace aux {
 			, std::int64_t((std::numeric_limits<int>::max)() / 2) * default_block_size);
 		static constexpr std::int64_t max_file_offset = (std::int64_t(1) << 48) - 1;
 
+		// we use a signed 32 bit integer for piece indices internally, but
+		// frequently need headroom for intermediate calculations, so we limit
+		// the number of pieces 1 bit below the maximum
+		static constexpr std::int32_t max_num_pieces = (std::int32_t(1) << 30) - 1;
+
+		// limit the piece length at (2 ^ 30) to get a bit of headroom. We
+		// commonly compute the number of blocks per pieces by adding
+		// block_size - 1 before dividing by block_size. That would overflow with
+		// a piece size of 2 ^ 31. This limit is still an unreasonably large
+		// piece size anyway.
+		// The piece picker (currently) has a limit of no more than (2^15)-1
+		// blocks per piece, which is more restrictive, at a block size of 16
+		// kiB (0x4000).
+		static constexpr std::int32_t max_piece_size = ((1 << 15) - 1) * 0x4000;
+
 		// returns true if the piece length has been initialized
 		// on the file_storage. This is typically taken as a proxy
 		// of whether the file_storage as a whole is initialized or
@@ -451,6 +466,10 @@ namespace aux {
 		// returns the number of blocks in the specified piece, for v2 torrents.
 		int blocks_in_piece2(piece_index_t index) const;
 
+		// returns the number of blocks there are in the typical piece. There
+		// may be fewer in the last piece)
+		int blocks_per_piece() const;
+
 		// set and get the name of this torrent. For multi-file torrents, this is also
 		// the name of the root directory all the files are stored in.
 		void set_name(std::string const& n) { m_name = n; }
@@ -627,6 +646,9 @@ namespace aux {
 
 		// internal
 		void remove_tail_padding();
+
+		// internal
+		void canonicalize_impl(bool backwards_compatible);
 
 	private:
 

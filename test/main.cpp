@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005, 2008, 2010, 2012-2020, Arvid Norberg
+Copyright (c) 2005, 2008, 2010, 2012-2022, Arvid Norberg
 Copyright (c) 2017, Andrei Kurushin
 Copyright (c) 2018, Steven Siloti
 All rights reserved.
@@ -53,7 +53,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <csignal>
 
 #ifdef _WIN32
-#include "libtorrent/aux_/windows.hpp" // fot SetErrorMode
+#include "libtorrent/aux_/windows.hpp" // for SetErrorMode
 #include <io.h> // for _dup and _dup2
 #include <process.h> // for _getpid
 #include <crtdbg.h>
@@ -134,7 +134,7 @@ LONG WINAPI seh_exception_handler(LPEXCEPTION_POINTERS p)
 	strcpy(stack_text, "<stack traces disabled>");
 #endif
 
-	int const code = p->ExceptionRecord->ExceptionCode;
+	DWORD const code = p->ExceptionRecord->ExceptionCode;
 	char const* name = "<unknown exception>";
 	switch (code)
 	{
@@ -462,26 +462,7 @@ int EXPORT main(int argc, char const* argv[])
 			// redirect test output to a temporary file
 			fflush(stdout);
 			fflush(stderr);
-
-#ifdef TORRENT_MINGW
-			// mingw has a buggy tmpfile() and tmpname() that needs a . prepended
-			// to it (or some other directory)
-			char temp_name[512];
-			FILE* f = nullptr;
-			if (tmpnam_s(temp_name + 1, sizeof(temp_name) - 1) == 0)
-			{
-				temp_name[0] = '.';
-				std::printf("using temporary filename %s\n", temp_name);
-				f = fopen(temp_name, "wb+");
-			}
-			else
-			{
-				std::printf("failed to generate filename for redirecting "
-					"output: (%d) %s\n", errno, strerror(errno));
-			}
-#else
 			FILE* f = tmpfile();
-#endif
 			if (f != nullptr)
 			{
 				int ret1 = 0;

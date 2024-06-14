@@ -1,8 +1,8 @@
 /*
 
-Copyright (c) 2009-2020, Arvid Norberg
-Copyright (c) 2015, Thomas Yuan
+Copyright (c) 2009-2021, Arvid Norberg
 Copyright (c) 2015-2019, Steven Siloti
+Copyright (c) 2015, Thomas Yuan
 Copyright (c) 2016-2018, Alden Torres
 Copyright (c) 2020, Fonic
 Copyright (c) 2020, FranciscoPombal
@@ -305,7 +305,7 @@ void send_dht_request(node& node, char const* msg, udp::endpoint const& ep
 	{
 		if (i == g_sent_packets.end())
 		{
-			TEST_ERROR("not response from DHT node");
+			TEST_ERROR("no response from DHT node");
 			return;
 		}
 
@@ -2576,7 +2576,7 @@ TORRENT_TEST(traversal_done)
 			TEST_ERROR(t.error_string);
 			continue;
 		}
-		char tok[11];
+		char tok[15];
 		std::snprintf(tok, sizeof(tok), "%02d", i);
 
 		msg_args args;
@@ -3215,7 +3215,7 @@ TORRENT_TEST(read_only_node)
 	sett.set_bool(settings_pack::dht_read_only, false);
 
 	send_dht_request(node, "get", source, &response);
-	// sender should be added to repacement bucket
+	// sender should be added to replacement bucket
 	TEST_EQUAL(std::get<1>(node.size()), 1);
 
 	g_sent_packets.clear();
@@ -3370,6 +3370,7 @@ TORRENT_TEST(rpc_invalid_error_msg)
 #if TORRENT_USE_ASSERTS
 	o->m_in_constructor = false;
 #endif
+	o->flags |= observer::flag_queried;
 	rpc.invoke(req, source, o);
 
 	// here's the incoming (malformed) error message

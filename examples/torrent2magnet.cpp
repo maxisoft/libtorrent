@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2019-2020, Arvid Norberg
+Copyright (c) 2019-2020, 2022, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,9 +32,10 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <iostream>
 
-#include "libtorrent/torrent_info.hpp"
+#include "libtorrent/load_torrent.hpp"
 #include "libtorrent/magnet_uri.hpp"
 #include "libtorrent/span.hpp"
+#include "libtorrent/load_torrent.hpp"
 
 namespace {
 
@@ -62,8 +63,7 @@ int main(int argc, char const* argv[]) try
 	char const* filename = args[0];
 	args = args.subspan(1);
 
-	lt::load_torrent_limits cfg;
-	lt::torrent_info t(filename, cfg);
+	lt::add_torrent_params atp = lt::load_torrent_file(filename);
 
 	using namespace lt::literals;
 
@@ -71,11 +71,12 @@ int main(int argc, char const* argv[]) try
 	{
 		if (args[0] == "--no-trackers"_sv)
 		{
-			t.clear_trackers();
+			atp.trackers.clear();
 		}
 		else if (args[0] == "--no-web-seeds"_sv)
 		{
-			t.set_web_seeds({});
+			atp.url_seeds.clear();
+			atp.http_seeds.clear();
 		}
 		else
 		{
@@ -85,7 +86,7 @@ int main(int argc, char const* argv[]) try
 		args = args.subspan(1);
 	}
 
-	std::cout << lt::make_magnet_uri(t) << '\n';
+	std::cout << lt::make_magnet_uri(atp) << '\n';
 	return 0;
 }
 catch (std::exception const& e)

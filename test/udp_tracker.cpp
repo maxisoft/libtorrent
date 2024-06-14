@@ -1,8 +1,8 @@
 /*
 
 Copyright (c) 2014-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2016, Andrei Kurushin
 Copyright (c) 2016, Alden Torres
+Copyright (c) 2016, Andrei Kurushin
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -160,7 +160,7 @@ struct udp_tracker
 				std::printf("%s: UDP scrape (ignored)\n", time_now_string().c_str());
 				break;
 			default:
-				std::printf("%s: UDP unknown message: %d\n", time_now_string().c_str()
+				std::printf("%s: UDP unknown message: %u\n", time_now_string().c_str()
 					, action);
 				break;
 		}

@@ -188,7 +188,7 @@ std::shared_ptr<http_connection> test_request(io_context& ios
 #endif
 		);
 
-	h->get(url, seconds(1), 0, &ps, 5, "test/user-agent", boost::none
+	h->get(url, seconds(1), &ps, 5, "test/user-agent", boost::none
 		, lt::aux::resolver_flags{}, auth);
 	return h;
 }
@@ -274,7 +274,7 @@ void run_suite(lt::aux::proxy_settings ps)
 	{
 		// this hostname will resolve to multiple IPs, all but one that we cannot
 		// connect to and the second one where we'll get the test file response. Make
-		// sure the http_connection correcly tries the second IP if the first one
+		// sure the http_connection correctly tries the second IP if the first one
 		// fails.
 		run_test(ps, "http://try-next.com:8080/test_file", 1337, 200
 			, error_condition(), { 1, 1, 1});
@@ -648,7 +648,7 @@ TORRENT_TEST(http_connection_ssl_proxy)
 #endif
 		);
 
-	h->start("10.0.0.2", 8080, seconds(1), 0, &ps, true /*ssl*/);
+	h->start("10.0.0.2", 8080, seconds(1), &ps, true /*ssl*/);
 
 	sim.run();
 
